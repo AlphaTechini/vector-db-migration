@@ -40,6 +40,7 @@ func main() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(rollbackCmd)
+	rootCmd.AddCommand(serveCmd)
 
 	// Execute
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
