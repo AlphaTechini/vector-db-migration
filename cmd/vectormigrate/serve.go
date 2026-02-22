@@ -50,13 +50,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
+	// Create state tracker
+	stateTracker, err := createStateTracker("")
+	if err != nil {
+		return fmt.Errorf("failed to create state tracker: %w", err)
+	}
+	defer stateTracker.Close()
+
 	// Create tool registry
 	registry := mcp.NewToolRegistry()
 
 	// Register tools
 	log.Println("   🔧 Registering tools...")
 
-	statusTool := tools.NewMigrationStatusTool()
+	statusTool := tools.NewMigrationStatusTool(stateTracker)
 	if err := statusTool.Register(registry); err != nil {
 		return fmt.Errorf("failed to register migration_status tool: %w", err)
 	}
