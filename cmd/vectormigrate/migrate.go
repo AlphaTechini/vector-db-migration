@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/AlphaTechini/vector-db-migration/internal/orchestrator"
 	"github.com/spf13/cobra"
 )
 
@@ -60,6 +62,14 @@ func init() {
 func runMigrate(cmd *cobra.Command, args []string) error {
 	migrationID := args[0]
 
+	// Validate database types
+	if err := validateDatabaseType(sourceType); err != nil {
+		return fmt.Errorf("invalid source type: %w", err)
+	}
+	if err := validateDatabaseType(targetType); err != nil {
+		return fmt.Errorf("invalid target type: %w", err)
+	}
+
 	log.Printf("🚀 Starting migration: %s", migrationID)
 	log.Printf("   Source: %s (%s)", sourceType, sourceIndex)
 	log.Printf("   Target: %s (%s)", targetType, targetIndex)
@@ -68,20 +78,95 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		log.Println("   📝 DRY RUN - no data will be written")
+		return nil
 	}
 
-	// TODO: Initialize adapters, mapper, orchestrator
-	// TODO: Start migration
-	// TODO: Monitor progress
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
 
-	// For now, just simulate
-	for i := 0; i < 5; i++ {
-		time.Sleep(500 * time.Millisecond)
-		log.Printf("   Progress: %d%%", (i+1)*20)
+	// Initialize components
+	log.Println("   🔧 Initializing components...")
+
+	sourceDB, err := createDatabase(sourceType, sourceURL, sourceAPIKey, sourceIndex, 30)
+	if err != nil {
+		return err
+	}
+	defer sourceDB.Close()
+
+	targetDB, err := createDatabase(targetType, targetURL, targetAPIKey, targetIndex, 30)
+	if err != nil {
+		return err
+	}
+	defer targetDB.Close()
+
+	schemaMapper, err := createMapper(sourceType, targetType)
+	if err != nil {
+		return err
 	}
 
-	log.Printf("✅ Migration completed: %s", migrationID)
-	return nil
+	stateTracker, err := createStateTracker("")
+	if err != nil {
+		return err
+	}
+	defer stateTracker.Close()
+
+	// Create orchestrator
+	migrator := createOrchestrator(migrationID)
+
+	// Configure migration
+	orchConfig := orchestrator.MigrationConfig{
+		SourceDB:      sourceDB,
+		TargetDB:      targetDB,
+		SchemaMapper:  schemaMapper,
+		StateTracker:  stateTracker,
+		BatchSize:     batchSize,
+		MaxRetries:    maxRetries,
+		ValidateEvery: validateEvery,
+	}
+
+	// Start migration
+	log.Println("   ▶️  Starting migration...")
+	if err := migrator.Start(ctx, orchConfig); err != nil {
+		return fmt.Errorf("failed to start migration: %w", err)
+	}
+
+	// Monitor progress
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("⚠️  Migration cancelled")
+			return ctx.Err()
+
+		case t := <-ticker.C:
+			_ = t // Use ticker time
+			status, err := migrator.GetStatus(migrationID)
+			if err != nil {
+				return fmt.Errorf("failed to get status: %w", err)
+			}
+
+			var progress float64
+			if status.TotalRecords > 0 {
+				progress = float64(status.MigratedRecords) / float64(status.TotalRecords) * 100
+			}
+
+			log.Printf("   📊 Progress: %d/%d records (%.1f%%) - Status: %s",
+				status.MigratedRecords, status.TotalRecords, progress, status.Status)
+
+			if status.Status == "completed" {
+				log.Printf("✅ Migration completed successfully!")
+				log.Printf("   Total: %d records, %d batches", status.MigratedRecords, status.BatchesProcessed)
+				return nil
+			}
+
+			if status.Status == "failed" || status.Status == "stopped" {
+				return fmt.Errorf("migration %s", status.Status)
+			}
+		}
+	}
 }
 
 // validateDatabaseType checks if the database type is supported
