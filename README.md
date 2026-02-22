@@ -230,8 +230,6 @@ Built with inspiration from:
 
 <div align="center">
 
-**Built with ❤️ by AlphaTechini**
-
 [Report Bug](https://github.com/AlphaTechini/vector-db-migration/issues) · [Request Feature](https://github.com/AlphaTechini/vector-db-migration/issues) · [Join Waitlist](https://vectormigrate.dev)
 
 </div>
