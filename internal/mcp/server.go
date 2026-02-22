@@ -15,14 +15,50 @@ type Server struct {
 	registry *ToolRegistry
 	server   *http.Server
 	mu       sync.Mutex
+	
+	// Middleware components (optional)
+	auth        *AuthMiddleware
+	rateLimiter *RateLimiterMiddleware
+	audit       *AuditMiddleware
 }
 
-// NewServer creates a new MCP server
-func NewServer(addr string, registry *ToolRegistry) *Server {
-	return &Server{
+// ServerOption configures a Server
+type ServerOption func(*Server)
+
+// WithAPIKey enables API key authentication
+func WithAPIKey(apiKey string) ServerOption {
+	return func(s *Server) {
+		s.auth = NewAuthMiddleware(apiKey)
+	}
+}
+
+// WithRateLimit enables rate limiting
+func WithRateLimit(requestsPerMinute, burst int) ServerOption {
+	return func(s *Server) {
+		s.rateLimiter = NewRateLimiterMiddleware(requestsPerMinute, burst)
+	}
+}
+
+// WithAuditLog enables audit logging
+func WithAuditLog(logger *log.Logger) ServerOption {
+	return func(s *Server) {
+		s.audit = NewAuditMiddleware(logger)
+	}
+}
+
+// NewServer creates a new MCP server with optional middleware
+func NewServer(addr string, registry *ToolRegistry, opts ...ServerOption) *Server {
+	s := &Server{
 		addr:     addr,
 		registry: registry,
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Start begins serving HTTP requests
@@ -37,12 +73,39 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRequest)
 
+	// Build middleware chain (innermost to outermost)
+	var handler http.Handler = mux
+
+	// Add audit logging (outermost - logs everything)
+	if s.audit != nil {
+		handler = s.audit.Middleware(handler)
+	}
+
+	// Add rate limiting
+	if s.rateLimiter != nil {
+		handler = s.rateLimiter.Middleware(handler)
+	}
+
+	// Add authentication (innermost - closest to handler)
+	if s.auth != nil {
+		handler = s.auth.Middleware(handler)
+	}
+
 	s.server = &http.Server{
 		Addr:    s.addr,
-		Handler: mux,
+		Handler: handler,
 	}
 
 	log.Printf("🔌 MCP server listening on %s", s.addr)
+	if s.auth != nil {
+		log.Println("   🔒 Authentication enabled")
+	}
+	if s.rateLimiter != nil {
+		log.Println("   ⚡ Rate limiting enabled")
+	}
+	if s.audit != nil {
+		log.Println("   📝 Audit logging enabled")
+	}
 
 	go func() {
 		<-ctx.Done()

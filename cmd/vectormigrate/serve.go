@@ -73,12 +73,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// listTool := tools.NewListMigrationsTool()
 	// listTool.Register(registry)
 
-	// Create MCP server
-	server := mcp.NewServer(mcpAddr, registry)
-
-	// TODO: Add authentication middleware
-	// TODO: Add rate limiting
-	// TODO: Add audit logging
+	// Create MCP server with middleware
+	server := mcp.NewServer(mcpAddr, registry,
+		mcp.WithAPIKey(apiKey),
+		mcp.WithRateLimit(100, 20), // 100 req/min, burst of 20
+		mcp.WithAuditLog(log.Default()),
+	)
 
 	// Start server
 	log.Println("   ▶️  Starting HTTP server...")

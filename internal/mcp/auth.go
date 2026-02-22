@@ -63,8 +63,10 @@ func extractAPIKey(r *http.Request) string {
 	return auth
 }
 
-// ContextKeyAPIKey is the context key for storing API key
-type ContextKeyAPIKey struct{}
+// contextKeyAPIKey is the context key for storing API key
+type contextKeyAPIKey struct{}
+
+var ContextKeyAPIKey = contextKeyAPIKey{}
 
 // GetAPIKeyFromContext retrieves the API key from request context
 func GetAPIKeyFromContext(ctx context.Context) string {
