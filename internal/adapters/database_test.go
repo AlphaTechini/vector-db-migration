@@ -7,10 +7,12 @@ import (
 
 // TestDatabaseInterface ensures all adapters implement the interface
 func TestDatabaseInterface(t *testing.T) {
-	// This test just verifies that PineconeAdapter implements Database
+	// Verify all adapters implement Database interface
 	var _ Database = (*PineconeAdapter)(nil)
+	var _ Database = (*QdrantAdapter)(nil)
+	var _ Database = (*WeaviateAdapter)(nil)
 	
-	t.Log("✓ PineconeAdapter implements Database interface")
+	t.Log("✓ All adapters (Pinecone, Qdrant, Weaviate) implement Database interface")
 }
 
 // TestPineconeAdapterConnect tests connection validation
