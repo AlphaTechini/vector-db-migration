@@ -63,15 +63,26 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Register tools
 	log.Println("   🔧 Registering tools...")
 
+	// migration_status
 	statusTool := tools.NewMigrationStatusTool(stateTracker)
 	if err := statusTool.Register(registry); err != nil {
 		return fmt.Errorf("failed to register migration_status tool: %w", err)
 	}
 	log.Println("   ✅ Registered: migration_status")
 
-	// TODO: Register more tools as they're implemented
-	// listTool := tools.NewListMigrationsTool()
-	// listTool.Register(registry)
+	// list_migrations
+	listTool := tools.NewListMigrationsTool(stateTracker)
+	if err := listTool.Register(registry); err != nil {
+		return fmt.Errorf("failed to register list_migrations tool: %w", err)
+	}
+	log.Println("   ✅ Registered: list_migrations")
+
+	// schema_recommendation
+	schemaTool := tools.NewSchemaRecommendationTool()
+	if err := schemaTool.Register(registry); err != nil {
+		return fmt.Errorf("failed to register schema_recommendation tool: %w", err)
+	}
+	log.Println("   ✅ Registered: schema_recommendation")
 
 	// Create MCP server with middleware
 	server := mcp.NewServer(mcpAddr, registry,
