@@ -5,10 +5,14 @@ import (
 	"testing"
 
 	"github.com/AlphaTechini/vector-db-migration/internal/mcp"
+	"github.com/AlphaTechini/vector-db-migration/internal/state"
 )
 
 func TestMigrationStatusTool_Register(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	registry := mcp.NewToolRegistry()
 
 	err := tool.Register(registry)
@@ -36,7 +40,10 @@ func TestMigrationStatusTool_Register(t *testing.T) {
 }
 
 func TestMigrationStatusTool_InputSchema(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	schema := tool.inputSchema()
 
 	// Verify schema structure
@@ -75,7 +82,10 @@ func TestMigrationStatusTool_InputSchema(t *testing.T) {
 }
 
 func TestMigrationStatusTool_Execute_Success(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
 	params := map[string]interface{}{
@@ -116,7 +126,10 @@ func TestMigrationStatusTool_Execute_Success(t *testing.T) {
 }
 
 func TestMigrationStatusTool_Execute_MissingParam(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
 	// Missing migration_id
@@ -134,7 +147,10 @@ func TestMigrationStatusTool_Execute_MissingParam(t *testing.T) {
 }
 
 func TestMigrationStatusTool_Execute_EmptyParam(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
 	// Empty migration_id
@@ -149,7 +165,10 @@ func TestMigrationStatusTool_Execute_EmptyParam(t *testing.T) {
 }
 
 func TestMigrationStatusTool_Execute_WrongType(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
 	// Wrong type (number instead of string)
@@ -164,7 +183,10 @@ func TestMigrationStatusTool_Execute_WrongType(t *testing.T) {
 }
 
 func TestMigrationStatusTool_Execute_WithAllFields(t *testing.T) {
-	tool := NewMigrationStatusTool()
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+	
+	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
 	params := map[string]interface{}{

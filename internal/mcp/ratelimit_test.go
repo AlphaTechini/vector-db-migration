@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -69,8 +70,9 @@ func TestRateLimiterMiddleware_RejectOverLimit(t *testing.T) {
 	}
 
 	expectedBody := `{"jsonrpc":"2.0","id":null,"error":{"code":-32002,"message":"rate limit exceeded"}}`
-	if rr.Body.String() != expectedBody {
-		t.Errorf("Expected body '%s', got '%s'", expectedBody, rr.Body.String())
+	actualBody := strings.TrimSpace(rr.Body.String())
+	if actualBody != expectedBody {
+		t.Errorf("Expected body '%s', got '%s'", expectedBody, actualBody)
 	}
 }
 

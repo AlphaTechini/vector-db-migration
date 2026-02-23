@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -24,8 +25,9 @@ func TestAuthMiddleware_MissingAuth(t *testing.T) {
 	}
 
 	expectedBody := `{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"missing authorization"}}`
-	if rr.Body.String() != expectedBody {
-		t.Errorf("Expected body '%s', got '%s'", expectedBody, rr.Body.String())
+	actualBody := strings.TrimSpace(rr.Body.String())
+	if actualBody != expectedBody {
+		t.Errorf("Expected body '%s', got '%s'", expectedBody, actualBody)
 	}
 }
 
@@ -47,8 +49,9 @@ func TestAuthMiddleware_InvalidKey(t *testing.T) {
 	}
 
 	expectedBody := `{"jsonrpc":"2.0","id":null,"error":{"code":-32001,"message":"invalid api key"}}`
-	if rr.Body.String() != expectedBody {
-		t.Errorf("Expected body '%s', got '%s'", expectedBody, rr.Body.String())
+	actualBody := strings.TrimSpace(rr.Body.String())
+	if actualBody != expectedBody {
+		t.Errorf("Expected body '%s', got '%s'", expectedBody, actualBody)
 	}
 }
 
