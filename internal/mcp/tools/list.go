@@ -2,8 +2,10 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/AlphaTechini/vector-db-migration/internal/mcp"
 	"github.com/AlphaTechini/vector-db-migration/internal/state"
@@ -85,7 +87,7 @@ type MigrationSummary struct {
 // execute runs the list_migrations tool
 func (t *ListMigrationsTool) execute(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	// Parse parameters
-	_ = params["status"] // TODO: Implement status filtering
+	statusFilter, _ := params["status"].(string)
 	limit, ok := params["limit"].(float64)
 	if !ok {
 		limit = 50
@@ -103,10 +105,53 @@ func (t *ListMigrationsTool) execute(ctx context.Context, params map[string]inte
 		sortOrder = "desc"
 	}
 
-	// TODO: Implement proper migration listing from state tracker
-	// For now, return empty list (state tracker doesn't have list functionality yet)
+	// Query state tracker for migrations
+	statusStr := ""
+	if statusFilter != "" && validateStatus(statusFilter) {
+		statusStr = statusFilter
+	}
 	
-	migrations := []MigrationSummary{}
+	migrationIDs, err := t.stateTracker.ListMigrations(statusStr, int(limit)+int(offset), 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list migrations: %w", err)
+	}
+	
+	// Build migration summaries
+	migrations := make([]MigrationSummary, 0, len(migrationIDs))
+	for _, id := range migrationIDs {
+		checkpoint, err := t.stateTracker.GetCheckpoint(id)
+		if err != nil {
+			continue // Skip if checkpoint not found
+		}
+		
+		summary := MigrationSummary{
+			MigrationID: id,
+		}
+		
+		if checkpoint != nil {
+			state, _ := t.stateTracker.GetState(id)
+			summary.Status = string(state)
+			
+			if !checkpoint.StartedAt.IsZero() {
+				summary.CreatedAt = checkpoint.StartedAt.Format(time.RFC3339)
+			}
+			
+			if checkpoint.TotalRecords > 0 {
+				percent := float64(checkpoint.ProcessedCount) / float64(checkpoint.TotalRecords) * 100.0
+				summary.Progress = &struct {
+					Total   int64   `json:"total"`
+					Current int64   `json:"current"`
+					Percent float64 `json:"percent"`
+				}{
+					Total:   checkpoint.TotalRecords,
+					Current: checkpoint.ProcessedCount,
+					Percent: percent,
+				}
+			}
+		}
+		
+		migrations = append(migrations, summary)
+	}
 	
 	// Apply sorting
 	sort.Slice(migrations, func(i, j int) bool {
@@ -142,7 +187,7 @@ func (t *ListMigrationsTool) execute(ctx context.Context, params map[string]inte
 
 	return map[string]interface{}{
 		"migrations": migrations,
-		"total":      0,
+		"total":      len(migrationIDs),
 		"limit":      limit,
 		"offset":     offset,
 	}, nil

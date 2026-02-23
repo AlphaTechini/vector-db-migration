@@ -60,6 +60,12 @@ type StateTracker interface {
 	
 	// Close closes the underlying storage connection
 	Close() error
+	
+	// ListMigrations returns migration IDs with optional filtering
+	ListMigrations(statusFilter string, limit, offset int) ([]string, error)
+	
+	// GetMigrationSummary returns a migration summary by ID
+	GetMigrationSummary(migrationID string) (*Checkpoint, error)
 }
 
 // SQLiteTracker implements StateTracker using SQLite
@@ -213,6 +219,42 @@ func (t *SQLiteTracker) Close() error {
 		return t.db.Close()
 	}
 	return nil
+}
+
+// ListMigrations returns a list of all migration IDs with optional filtering
+func (t *SQLiteTracker) ListMigrations(statusFilter string, limit, offset int) ([]string, error) {
+	query := `SELECT migration_id FROM migrations`
+	args := []interface{}{}
+	
+	if statusFilter != "" {
+		query += ` WHERE state = ?`
+		args = append(args, statusFilter)
+	}
+	
+	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	
+	rows, err := t.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list migrations: %w", err)
+	}
+	defer rows.Close()
+	
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan migration ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	
+	return ids, nil
+}
+
+// GetMigrationSummary returns a summary of a migration by ID
+func (t *SQLiteTracker) GetMigrationSummary(migrationID string) (*Checkpoint, error) {
+	return t.GetCheckpoint(migrationID)
 }
 
 // Ensure SQLiteTracker implements StateTracker interface
