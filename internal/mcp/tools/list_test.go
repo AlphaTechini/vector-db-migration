@@ -91,9 +91,22 @@ func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 		t.Error("Expected migrations array in response")
 	}
 
-	total := int(resultMap["total"].(float64))
-	limit := int(resultMap["limit"].(float64))
-	offset := int(resultMap["offset"].(float64))
+	// Helper to safely get int from interface (handles both int and float64)
+	getInt := func(v interface{}, name string) int {
+		switch val := v.(type) {
+		case int:
+			return val
+		case float64:
+			return int(val)
+		default:
+			t.Errorf("Expected %s to be int or float64, got %T", name, v)
+			return 0
+		}
+	}
+
+	total := getInt(resultMap["total"], "total")
+	limit := getInt(resultMap["limit"], "limit")
+	offset := getInt(resultMap["offset"], "offset")
 	
 	if total != 0 {
 		t.Errorf("Expected total 0, got %d", total)
