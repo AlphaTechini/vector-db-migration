@@ -1,5 +1,7 @@
 package mcp
 
+import "encoding/json"
+
 // JSON-RPC 2.0 request format
 type Request struct {
 	JSONRPC string          `json:"jsonrpc"`

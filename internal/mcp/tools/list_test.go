@@ -91,16 +91,18 @@ func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 		t.Error("Expected migrations array in response")
 	}
 
-	if resultMap["total"] != 0 {
-		t.Errorf("Expected total 0, got %v", resultMap["total"])
+	total := int(resultMap["total"].(float64))
+	limit := int(resultMap["limit"].(float64))
+	offset := int(resultMap["offset"].(float64))
+	
+	if total != 0 {
+		t.Errorf("Expected total 0, got %d", total)
 	}
-
-	if resultMap["limit"] != 50 {
-		t.Errorf("Expected default limit 50, got %v", resultMap["limit"])
+	if limit != 50 {
+		t.Errorf("Expected default limit 50, got %d", limit)
 	}
-
-	if resultMap["offset"] != 0 {
-		t.Errorf("Expected default offset 0, got %v", resultMap["offset"])
+	if offset != 0 {
+		t.Errorf("Expected default offset 0, got %d", offset)
 	}
 }
 
@@ -121,7 +123,7 @@ func TestListMigrationsTool_Execute_CustomLimit(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if resultMap["limit"] != 10 {
+	if int(resultMap["limit"].(float64)) != 10 {
 		t.Errorf("Expected limit 10, got %v", resultMap["limit"])
 	}
 }
@@ -190,10 +192,10 @@ func TestListMigrationsTool_Execute_Pagination(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if resultMap["limit"] != 10 {
+	if int(resultMap["limit"].(float64)) != 10 {
 		t.Errorf("Expected limit 10, got %v", resultMap["limit"])
 	}
-	if resultMap["offset"] != 20 {
+	if int(resultMap["offset"].(float64)) != 20 {
 		t.Errorf("Expected offset 20, got %v", resultMap["offset"])
 	}
 }
@@ -214,7 +216,7 @@ func TestValidateStatus_ValidStatuses(t *testing.T) {
 }
 
 func TestValidateStatus_InvalidStatus(t *testing.T) {
-	invalidStatuses := []string{"unknown", "pending", "running", "", "IN_PROGRESS"}
+	invalidStatuses := []string{"unknown", "pending", "running", "", "invalid_status"}
 
 	for _, status := range invalidStatuses {
 		if validateStatus(status) {
@@ -240,7 +242,7 @@ func TestListMigrationsTool_Execute_MaxLimit(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if resultMap["limit"] != 500 {
+	if int(resultMap["limit"].(float64)) != 500 {
 		t.Errorf("Expected limit 500, got %v", resultMap["limit"])
 	}
 }

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -86,7 +85,7 @@ type MigrationSummary struct {
 // execute runs the list_migrations tool
 func (t *ListMigrationsTool) execute(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	// Parse parameters
-	statusFilter, _ := params["status"].(string)
+	_ = params["status"] // TODO: Implement status filtering
 	limit, ok := params["limit"].(float64)
 	if !ok {
 		limit = 50
@@ -144,8 +143,8 @@ func (t *ListMigrationsTool) execute(ctx context.Context, params map[string]inte
 	return map[string]interface{}{
 		"migrations": migrations,
 		"total":      0,
-		"limit":      int(limit),
-		"offset":     int(offset),
+		"limit":      limit,
+		"offset":     offset,
 	}, nil
 }
 
