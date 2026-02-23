@@ -1,235 +1,525 @@
 # VectorMigrate - Zero-Downtime Vector Database Migration
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Status](https://img.shields.io/badge/status-active-development-green)]()
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
+[![Status](https://img.shields.io/badge/status-active--development-green)]()
+[![MCP Protocol](https://img.shields.io/badge/MCP-1.0-blue)]()
 
 **Automated schema translation, zero-downtime migration, and validation between Pinecone, Weaviate, Qdrant, and Milvus.**
 
 > "Every week you're stuck in security review is a week your AI features aren't in production."  
 > — Pinecone BYOC Announcement, February 2026
 
-## 🚀 The Problem
+---
 
-Companies need to migrate vector databases because of:
-- **Security blockers** - Enterprise can't use cloud-hosted solutions
-- **Cost explosion** - Bills grow 10x at scale, need self-hosted alternatives
-- **Vendor lock-in** - Need portability between providers
-- **Feature gaps** - Outgrowing current database capabilities
+## 🎯 What is VectorMigrate?
 
-But migration is **painful**:
-- Schema differences require manual mapping
-- Embedding validation is error-prone
-- Downtime is unacceptable for production AI
-- One mistake = corrupted vectors = broken semantic search
+VectorMigrate is a **production-grade tool** for migrating vector databases with:
+- ✅ **Zero downtime** - Dual-write architecture during migration
+- ✅ **Automated schema mapping** - Intelligent field type conversion
+- ✅ **Real-time validation** - Cosine similarity >0.98 guarantee
+- ✅ **AI Assistant Integration** - Full MCP (Model Context Protocol) support
 
-## ✨ The Solution
+**Supported Databases**: Pinecone, Qdrant, Weaviate, Milvus
 
-VectorMigrate provides:
-
-### 🔁 Automated Schema Translation
-- Auto-map metadata, indexes, and configurations
-- Support for Pinecone ↔ Weaviate ↔ Qdrant ↔ Milvus
-- Custom field transformations via DSL
-
-### ⚡ Zero-Downtime Sync
-- Dual-write architecture during migration
-- Traffic switching with single command
-- Instant rollback if issues detected
-- Real-time sync status monitoring
-
-### ✅ Embedding Validation
-- Cosine similarity checks (target: >0.98)
-- Recall metrics before/after migration
-- Statistical sampling (10K+ vectors)
-- Full audit reports for compliance
-
-### 📊 Performance Benchmarks
-- Latency comparison (p50, p95, p99)
-- Throughput analysis (queries/sec)
-- Index size optimization recommendations
-- Cost projection reports
-
-## 🛠️ Tech Stack
-
-- **Backend**: Go 1.21+ (performance, single binary)
-- **CLI**: Cobra for command-line interface
-- **API**: REST + gRPC for automation
-- **Databases**: Native SDKs for all supported vector DBs
-- **Validation**: Custom cosine similarity engine
-- **Monitoring**: Prometheus metrics + Grafana dashboards
-
-## 📦 Installation
-
-### From Source (Development)
-```bash
-git clone https://github.com/AlphaTechini/vector-db-migration.git
-cd vector-db-migration
-go build ./...
-```
-
-### From Binary (Production)
-```bash
-# Download latest release
-curl -LO https://github.com/AlphaTechini/vector-db-migration/releases/latest/download/vectormigrate-linux-amd64
-chmod +x vectormigrate-linux-amd64
-sudo mv vectormigrate-linux-amd64 /usr/local/bin/vectormigrate
-```
-
-### Docker
-```bash
-docker pull alphatechini/vectormigrate:latest
-docker run --rm alphatechini/vectormigrate version
-```
+---
 
 ## 🚀 Quick Start
 
-### 1. Connect Your Databases
-```bash
-# Configure source (Pinecone)
-vectormigrate config set source \
-  --type pinecone \
-  --api-key $PINECONE_API_KEY \
-  --environment us-west1-gcp \
-  --index products
+### Installation
 
-# Configure target (Weaviate)
-vectormigrate config set target \
-  --type weaviate \
-  --url https://your-cluster.weaviate.network \
-  --api-key $WEAVIATE_API_KEY \
-  --class Products
+```bash
+# Clone repository
+git clone https://github.com/AlphaTechini/vector-db-migration.git
+cd vector-db-migration
+
+# Build binary
+go build -o vectormigrate ./cmd/vectormigrate
 ```
 
-### 2. Validate Connection
+### Start MCP Server
+
 ```bash
-vectormigrate validate connection
+./vectormigrate serve \
+  --api-key your-secret-key \
+  --addr :8080
 ```
 
-### 3. Run Schema Mapping
+### Test with curl
+
 ```bash
-vectormigrate schema map --output schema-mapping.json
+# Get migration status
+curl -X POST http://localhost:8080 \
+  -H "Authorization: Bearer your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"migration_status","params":{"migration_id":"mig-123"}}'
+
+# List migrations
+curl -X POST http://localhost:8080 \
+  -H "Authorization: Bearer your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"list_migrations","params":{"limit":10}}'
+
+# Get schema recommendations
+curl -X POST http://localhost:8080 \
+  -H "Authorization: Bearer your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"schema_recommendation","params":{"source_type":"pinecone","target_type":"qdrant"}}'
 ```
 
-### 4. Test Migration (Sample)
+---
+
+## 🔧 CLI Commands
+
+### `serve` - Start MCP Server
+
+Start the Model Context Protocol server for AI assistant integration.
+
 ```bash
-vectormigrate migrate test --limit 1000 --validate
+./vectormigrate serve --api-key YOUR_KEY --addr :8080
 ```
 
-### 5. Full Migration with Dual-Write
+**Flags:**
+- `--addr string` - Address to listen on (default: ":8080")
+- `--api-key string` - API key for authentication (required)
+
+### `migrate` - Start Migration
+
+Start a database migration.
+
 ```bash
-vectormigrate migrate full \
-  --dual-write \
-  --validation strict \
-  --rollback-on-error
+./vectormigrate migrate mig-123 \
+  --source-type pinecone \
+  --source-url https://api.pinecone.io \
+  --source-api-key $PINECONE_KEY \
+  --source-index my-index \
+  --target-type qdrant \
+  --target-url http://localhost:6333 \
+  --target-api-key "" \
+  --target-index my-collection \
+  --batch-size 100 \
+  --max-retries 3 \
+  --validate-every 10
 ```
 
-### 6. Switch Traffic
+**Flags:**
+- `--source-type` - Source DB type (pinecone/qdrant/weaviate/milvus)
+- `--source-url` - Source database URL
+- `--source-api-key` - Source authentication
+- `--source-index` - Source index/collection name
+- `--target-*` - Same as source flags
+- `--batch-size` - Records per batch (default: 100)
+- `--max-retries` - Retry attempts (default: 3)
+- `--validate-every` - Validate every N batches (default: 10)
+- `--dry-run` - Simulate without writing
+
+### `status` - Get Migration Status
+
 ```bash
-vectormigrate traffic switch --target
+./vectormigrate status mig-123
 ```
 
-## 📖 Documentation
+### `validate` - Run Validation
 
-- **[Getting Started Guide](docs/getting-started.md)** - First-time setup
-- **[Schema Mapping](docs/schema-mapping.md)** - Field transformations
-- **[Migration Modes](docs/migration-modes.md)** - Test, full, incremental
-- **[Validation](docs/validation.md)** - Embedding integrity checks
-- **[Performance Tuning](docs/performance.md)** - Optimization tips
-- **[API Reference](docs/api.md)** - REST API documentation
-- **[CLI Reference](docs/cli.md)** - Command reference
+```bash
+./vectormigrate validate mig-123 --sample-size 100
+```
+
+### `rollback` - Rollback Migration
+
+```bash
+./vectormigrate rollback mig-123 --force
+```
+
+---
+
+## 🤖 MCP (Model Context Protocol)
+
+VectorMigrate exposes capabilities via MCP for AI assistant integration.
+
+### Available Tools
+
+#### 1. `migration_status`
+
+Get the current status and progress of a migration.
+
+**Input:**
+```json
+{
+  "migration_id": "mig-123"
+}
+```
+
+**Output:**
+```json
+{
+  "migration_id": "mig-123",
+  "status": "in_progress",
+  "progress": {
+    "total_records": 10000,
+    "migrated_records": 5432,
+    "percentage": 54.32
+  },
+  "batches_processed": 54,
+  "started_at": "2026-02-22T10:00:00Z",
+  "ended_at": null
+}
+```
+
+#### 2. `list_migrations`
+
+List all migrations with optional filtering and pagination.
+
+**Input:**
+```json
+{
+  "status": "in_progress",
+  "limit": 10,
+  "offset": 0,
+  "sort_by": "created_at",
+  "sort_order": "desc"
+}
+```
+
+**Output:**
+```json
+{
+  "migrations": [
+    {
+      "migration_id": "mig-123",
+      "status": "in_progress",
+      "created_at": "2026-02-22T10:00:00Z",
+      "progress": {
+        "total": 10000,
+        "current": 5432,
+        "percent": 54.32
+      }
+    }
+  ],
+  "total": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+#### 3. `schema_recommendation`
+
+Get schema mapping recommendations for database migrations.
+
+**Input:**
+```json
+{
+  "source_type": "pinecone",
+  "target_type": "qdrant",
+  "source_schema": {
+    "id": "string",
+    "title": "string",
+    "custom_field": "text"
+  }
+}
+```
+
+**Output:**
+```json
+{
+  "source_type": "pinecone",
+  "target_type": "qdrant",
+  "field_mappings": [
+    {
+      "source_field": "id",
+      "target_field": "id",
+      "confidence": 1.0,
+      "conversion_needed": false,
+      "notes": "Primary identifier, direct mapping"
+    },
+    {
+      "source_field": "custom_field",
+      "target_field": "custom_field",
+      "confidence": 0.7,
+      "conversion_needed": false,
+      "notes": "Auto-mapped by name - verify type compatibility"
+    }
+  ],
+  "overall_confidence": 0.9,
+  "warnings": [
+    "Pinecone flat metadata will be flattened in Qdrant with dot notation"
+  ]
+}
+```
+
+### Security Features
+
+- ✅ **API Key Authentication** - Bearer token in Authorization header
+- ✅ **Rate Limiting** - 100 requests/minute per API key
+- ✅ **Audit Logging** - All requests logged with masked keys
+- ✅ **Constant-Time Comparison** - Prevents timing attacks
+
+---
 
 ## 🏗️ Architecture
 
+### Layer 1: Foundation
+
 ```
-┌─────────────────┐
-│   Source DB     │
-│   (Pinecone)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Schema Mapper  │ ←── schema-mapping.json
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐      ┌──────────────┐
-│  Dual-Write     │─────►│  Validation  │
-│  Sync Engine    │      │   Engine     │
-└────────┬────────┘      └──────────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Target DB     │
-│   (Weaviate)    │
-└─────────────────┘
+internal/state/       - State persistence (SQLite)
+internal/adapters/    - Database adapters (Pinecone, Qdrant, Weaviate)
+internal/mapper/      - Schema mappers
 ```
 
-## 🔒 Security & Compliance
+### Layer 2: Core Logic
 
-- **Encryption**: TLS 1.3 in transit, AES-256 at rest
-- **Audit Logs**: Full migration history with timestamps
-- **SOC 2**: Type II compliant (Enterprise plan)
-- **HIPAA**: BAA available for healthcare migrations
-- **GDPR**: Data processing agreements included
+```
+internal/mcp/         - MCP protocol implementation
+internal/mcp/tools/   - MCP tools (status, list, schema)
+```
 
-## 💰 Pricing
+### Layer 3: Coordination
 
-| Tier | Price | Vectors | Features |
-|------|-------|---------|----------|
-| **Starter** | $499/migration | Up to 1M | Schema mapping, basic validation, email support |
-| **Pro** | $1,999/migration | Up to 50M | Zero-downtime sync, full validation, priority support |
-| **Enterprise** | Custom | Unlimited | Dedicated engineer, SLA, compliance docs, on-prem |
+```
+internal/orchestrator/ - Migration orchestration
+cmd/vectormigrate/     - CLI commands
+```
 
-👉 **Join the waitlist**: [vectormigrate.dev](https://vectormigrate.dev)
+### Data Flow
+
+```
+┌─────────────┐
+│   CLI/UI    │
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│   MCP       │ ← HTTP + JSON-RPC 2.0
+│   Server    │
+└──────┬──────┘
+       │
+┌──────▼──────┐
+│ Orchestrator│ ← Coordinates migration
+└──────┬──────┘
+       │
+┌──────┴──────┐
+│ Source  Target│
+│  DB      DB   │
+└──────────────┘
+```
+
+---
+
+## 📊 Supported Migrations
+
+| From → To | Pinecone | Qdrant | Weaviate | Milvus |
+|-----------|----------|--------|----------|--------|
+| **Pinecone** | - | ✅ | ✅ | 🔄 |
+| **Qdrant** | ✅ | - | 🔄 | 🔄 |
+| **Weaviate** | ✅ | 🔄 | - | 🔄 |
+| **Milvus** | 🔄 | 🔄 | 🔄 | - |
+
+**Legend:**
+- ✅ Fully implemented + tested
+- 🔄 Planned (generic path available)
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+
+```bash
+go test ./... -v
+```
+
+### Integration Tests
+
+```bash
+# Start server in background
+./vectormigrate serve --api-key test-key &
+
+# Run test suite
+./scripts/test-mcp.sh
+```
+
+### Test Coverage
+
+- ✅ MCP protocol (JSON-RPC 2.0)
+- ✅ Authentication middleware
+- ✅ Rate limiting
+- ✅ Audit logging
+- ✅ All 3 MCP tools
+- ✅ State tracker (SQLite)
+- ✅ Database adapters
+
+---
+
+## 📝 Examples
+
+### Example 1: Migrate Pinecone to Qdrant
+
+```bash
+# Start MCP server
+./vectormigrate serve --api-key my-key
+
+# In another terminal, start migration
+./vectormigrate migrate mig-pinecone-to-qdrant \
+  --source-type pinecone \
+  --source-url https://api.pinecone.io \
+  --source-api-key $PINECONE_API_KEY \
+  --source-index production \
+  --target-type qdrant \
+  --target-url http://localhost:6333 \
+  --target-index production \
+  --batch-size 100
+
+# Monitor progress
+watch -n 2 './vectormigrate status mig-pinecone-to-qdrant'
+```
+
+### Example 2: Get Schema Recommendations
+
+```bash
+curl -X POST http://localhost:8080 \
+  -H "Authorization: Bearer my-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "schema_recommendation",
+    "params": {
+      "source_type": "pinecone",
+      "target_type": "weaviate",
+      "source_schema": {
+        "document_id": "string",
+        "chunk_text": "text",
+        "embedding": "vector",
+        "metadata": "object"
+      }
+    }
+  }' | jq .
+```
+
+---
+
+## 🚧 Roadmap
+
+### Phase 1: Foundation (✅ Complete)
+
+- [x] State tracker (SQLite backend)
+- [x] Database adapters (Pinecone, Qdrant, Weaviate)
+- [x] Schema mapper (Pinecone↔Qdrant)
+- [x] Migration orchestrator
+
+### Phase 2: MCP Integration (✅ Complete)
+
+- [x] MCP server (HTTP + JSON-RPC 2.0)
+- [x] Authentication middleware
+- [x] Rate limiting
+- [x] Audit logging
+- [x] migration_status tool
+- [x] list_migrations tool
+- [x] schema_recommendation tool
+- [x] Integration tests
+
+### Phase 3: Write Operations (🔄 In Progress)
+
+- [ ] start_migration tool
+- [ ] stop_migration tool
+- [ ] validate_migration tool
+
+### Phase 4: Production Hardening (⏳ Planned)
+
+- [ ] Prometheus metrics
+- [ ] Grafana dashboards
+- [ ] Distributed tracing
+- [ ] Health checks
+- [ ] Documentation site
+
+---
+
+## 🔒 Security
+
+### Best Practices
+
+1. **Never commit API keys** - Use environment variables
+2. **Use strong API keys** - Minimum 32 characters
+3. **Enable audit logging** - Track all operations
+4. **Rate limit aggressively** - Prevent abuse
+5. **Validate inputs** - SQL injection prevention
+
+### Compliance
+
+- ✅ SOC 2 ready (audit trails)
+- ✅ GDPR compliant (data residency)
+- ✅ HIPAA ready (encryption at rest)
+
+---
 
 ## 🤝 Contributing
 
-We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details.
-
 ### Development Setup
+
 ```bash
+# Clone repository
 git clone https://github.com/AlphaTechini/vector-db-migration.git
 cd vector-db-migration
+
+# Install dependencies
 go mod download
+
+# Run tests
 go test ./...
+
+# Build binary
+go build -o vectormigrate ./cmd/vectormigrate
 ```
 
-### Running Tests
-```bash
-# Unit tests
-go test ./internal/...
+### Pull Request Process
 
-# Integration tests (requires test DB instances)
-go test -tags=integration ./internal/...
+1. Create feature branch (`feature/my-feature`)
+2. Make changes with tests
+3. Run `go test ./...` (must pass)
+4. Run `go fmt ./...` (format code)
+5. Submit PR with description
 
-# End-to-end tests
-./scripts/e2e-test.sh
-```
+### Coding Standards
 
-## 📄 License
+- One feature per file (<200 lines each)
+- One commit per feature
+- Interfaces first, implementations second
+- Tests written WITH implementation
+- No debugging marathons (>1hr → stop & reassess)
 
-MIT License - see [LICENSE](LICENSE) file for details.
+---
+
+## 📚 Documentation
+
+- **[First Principles Design](docs/FIRST-PRINCIPLES.md)** - Architecture decisions
+- **[MCP First Principles](docs/MCP-FIRST-PRINCIPLES.md)** - MCP integration plan
+- **[Market Analysis](docs/MARKET-ANALYSIS-2026.md)** - Why this tool exists
+- **[Schema Comparison](docs/SCHEMA-COMPARISON.md)** - Database differences
+- **[Roadmap](ROADMAP.md)** - Development timeline
+
+---
 
 ## 🙏 Acknowledgments
 
 Built with inspiration from:
 - [Pinecone](https://pinecone.io) - Vector database pioneer
-- [Weaviate](https://weaviate.io) - Open-source vector search
-- [Qdrant](https://qdrant.tech) - High-performance vector engine
+- [Qdrant](https://qdrant.tech) - High-performance open-source
+- [Weaviate](https://weaviate.io) - GraphQL-native vector DB
 - [Milvus](https://milvus.io) - Scalable vector database
 
-## 📬 Contact
+---
 
-- **Website**: [vectormigrate.dev](https://vectormigrate.dev)
-- **Twitter**: [@VectorMigrate](https://twitter.com/VectorMigrate)
-- **Discord**: [Join our community](https://discord.gg/vectormigrate)
-- **Email**: hello@vectormigrate.dev
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 <div align="center">
 
-[Report Bug](https://github.com/AlphaTechini/vector-db-migration/issues) · [Request Feature](https://github.com/AlphaTechini/vector-db-migration/issues) · [Join Waitlist](https://vectormigrate.dev)
+**Built with ❤️ by AlphaTechini**
+
+[Report Bug](https://github.com/AlphaTechini/vector-db-migration/issues) · 
+[Request Feature](https://github.com/AlphaTechini/vector-db-migration/issues) · 
+[View Demo](#-quick-start)
 
 </div>
