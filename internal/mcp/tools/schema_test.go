@@ -34,7 +34,7 @@ func TestSchemaRecommendationTool_InputSchema(t *testing.T) {
 		t.Errorf("Expected type 'object', got '%v'", schema["type"])
 	}
 
-	props, ok := schema["properties"].(map[string]interface{})
+	_, ok := schema["properties"].(map[string]interface{})
 	if !ok {
 		t.Fatal("Expected properties to be map[string]interface{}")
 	}
