@@ -35,36 +35,36 @@ func NewBaseOrchestrator(migrationID string) *BaseOrchestrator {
 func (o *BaseOrchestrator) Start(ctx context.Context, config MigrationConfig) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	if o.isRunning {
 		return fmt.Errorf("migration already running")
 	}
-	
+
 	o.config = config
 	o.ctx, o.cancel = context.WithCancel(ctx)
 	o.isRunning = true
 	o.isPaused = false
-	
+
 	// Initialize stats
 	o.stats = &MigrationStats{
 		Status:    "in_progress",
 		StartTime: time.Now().Format(time.RFC3339),
 	}
-	
+
 	// Set initial state
 	checkpoint := &state.Checkpoint{
 		MigrationID:      o.migrationID,
 		StartedAt:        time.Now(),
 		LastCheckpointAt: time.Now(),
 	}
-	
+
 	if err := config.StateTracker.SaveCheckpoint(checkpoint); err != nil {
 		return fmt.Errorf("failed to save initial checkpoint: %w", err)
 	}
-	
+
 	// Start migration in background
 	go o.runMigration()
-	
+
 	return nil
 }
 
@@ -76,22 +76,22 @@ func (o *BaseOrchestrator) runMigration() {
 		o.cancel()
 		o.mu.Unlock()
 	}()
-	
+
 	// Get source stats to know total records
 	sourceStats, err := o.config.SourceDB.GetStats(o.ctx)
 	if err != nil {
 		o.fail(fmt.Sprintf("failed to get source stats: %v", err))
 		return
 	}
-	
+
 	o.mu.Lock()
 	o.stats.TotalRecords = sourceStats.TotalRecords
 	o.mu.Unlock()
-	
+
 	// Process batches
 	batchNum := 0
 	var afterID string
-	
+
 	for {
 		// Check if paused or cancelled
 		o.mu.RLock()
@@ -100,38 +100,38 @@ func (o *BaseOrchestrator) runMigration() {
 			return
 		}
 		o.mu.RUnlock()
-		
+
 		// Get next batch
 		batchSize := o.config.BatchSize
 		if batchSize == 0 {
 			batchSize = 100 // Default
 		}
-		
+
 		records, err := o.config.SourceDB.GetBatch(o.ctx, afterID, batchSize)
 		if err != nil {
 			o.fail(fmt.Sprintf("failed to get batch %d: %v", batchNum, err))
 			return
 		}
-		
+
 		if len(records) == 0 {
 			// No more records, migration complete
 			o.complete()
 			return
 		}
-		
+
 		// Map records to target schema
 		mappedRecords, err := o.config.SchemaMapper.MapBatch(records, nil)
 		if err != nil {
 			o.fail(fmt.Sprintf("failed to map batch %d: %v", batchNum, err))
 			return
 		}
-		
+
 		// Upsert to target
 		if err := o.config.TargetDB.UpsertBatch(o.ctx, mappedRecords); err != nil {
 			o.fail(fmt.Sprintf("failed to upsert batch %d: %v", batchNum, err))
 			return
 		}
-		
+
 		// Update progress
 		o.mu.Lock()
 		o.stats.BatchesProcessed++
@@ -139,13 +139,13 @@ func (o *BaseOrchestrator) runMigration() {
 		if len(records) > 0 {
 			afterID = records[len(records)-1].ID
 		}
-		
+
 		// Save checkpoint every N batches
 		validateEvery := o.config.ValidateEvery
 		if validateEvery == 0 {
 			validateEvery = 10
 		}
-		
+
 		if batchNum%validateEvery == 0 {
 			checkpoint := &state.Checkpoint{
 				MigrationID:      o.migrationID,
@@ -156,7 +156,7 @@ func (o *BaseOrchestrator) runMigration() {
 				StartedAt:        parseTime(o.stats.StartTime),
 				LastCheckpointAt: time.Now(),
 			}
-			
+
 			if err := o.config.StateTracker.SaveCheckpoint(checkpoint); err != nil {
 				o.mu.Unlock()
 				o.fail(fmt.Sprintf("failed to save checkpoint: %v", err))
@@ -164,7 +164,7 @@ func (o *BaseOrchestrator) runMigration() {
 			}
 		}
 		o.mu.Unlock()
-		
+
 		batchNum++
 	}
 }
@@ -174,17 +174,17 @@ func (o *BaseOrchestrator) Pause(migrationID string) error {
 	if migrationID != o.migrationID {
 		return fmt.Errorf("migration ID mismatch")
 	}
-	
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	if !o.isRunning {
 		return fmt.Errorf("migration not running")
 	}
-	
+
 	o.isPaused = true
 	o.stats.Status = "paused"
-	
+
 	return nil
 }
 
@@ -193,17 +193,17 @@ func (o *BaseOrchestrator) Resume(migrationID string) error {
 	if migrationID != o.migrationID {
 		return fmt.Errorf("migration ID mismatch")
 	}
-	
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	if !o.isPaused {
 		return fmt.Errorf("migration not paused")
 	}
-	
+
 	o.isPaused = false
 	o.stats.Status = "in_progress"
-	
+
 	return nil
 }
 
@@ -212,34 +212,181 @@ func (o *BaseOrchestrator) Stop(migrationID string) error {
 	if migrationID != o.migrationID {
 		return fmt.Errorf("migration ID mismatch")
 	}
-	
+
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	if !o.isRunning {
 		return fmt.Errorf("migration not running")
 	}
-	
+
 	o.cancel()
 	o.stats.Status = "stopped"
 	o.isRunning = false
-	
+
 	return nil
 }
 
-// Rollback rolls back a migration
+// Rollback rolls back a migration by deleting migrated records from the target database
 func (o *BaseOrchestrator) Rollback(migrationID string) error {
-	// TODO: Implement rollback logic
-	// For now, just mark as rolled back
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	
-	o.stats.Status = "rolled_back"
-	
-	if err := o.config.StateTracker.SetState(migrationID, state.StateRolledBack); err != nil {
-		return fmt.Errorf("failed to update state: %w", err)
+	if migrationID != o.migrationID {
+		return fmt.Errorf("migration ID mismatch")
 	}
-	
+
+	o.mu.Lock()
+	if o.isRunning {
+		o.mu.Unlock()
+		return fmt.Errorf("cannot rollback a running migration; stop it first")
+	}
+
+	// Mark as rolling back
+	o.isRunning = true
+	o.isPaused = false
+	o.stats.Status = "rolling_back"
+
+	// Check if context exists, if not create one
+	if o.ctx == nil {
+		o.ctx, o.cancel = context.WithCancel(context.Background())
+	}
+	o.mu.Unlock()
+
+	defer func() {
+		o.mu.Lock()
+		o.isRunning = false
+		if o.stats.Status == "rolling_back" {
+			// If not updated to rolled_back or failed, assume interrupted
+			o.stats.Status = "rollback_interrupted"
+		}
+		o.mu.Unlock()
+	}()
+
+	// 1. Get the checkpoint to know where to stop
+	checkpoint, err := o.config.StateTracker.GetCheckpoint(migrationID)
+	if err != nil {
+		return fmt.Errorf("failed to get checkpoint: %w", err)
+	}
+	if checkpoint == nil || checkpoint.LastProcessedID == "" {
+		return fmt.Errorf("no checkpoint or LastProcessedID found; nothing to rollback")
+	}
+	targetStopID := checkpoint.LastProcessedID
+
+	// 2. Setup Concurrency (Producer/Consumer)
+	numWorkers := 5 // configurable in future
+	idChan := make(chan []string, numWorkers*2)
+	errChan := make(chan error, numWorkers)
+	var wg sync.WaitGroup
+
+	// Start Consumer Workers
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for ids := range idChan {
+				// Delete batch from target
+				if err := o.config.TargetDB.DeleteBatch(o.ctx, ids); err != nil {
+					select {
+					case errChan <- fmt.Errorf("failed to delete batch (size %d): %w", len(ids), err):
+					default:
+					}
+					// Signal cancellation so producer stops too
+					if o.cancel != nil {
+						o.cancel()
+					}
+					return
+				}
+			}
+		}()
+	}
+
+	// 3. Producer: Scan source and feed consumers
+	go func() {
+		defer close(idChan)
+		var afterID string
+		batchSize := o.config.BatchSize
+		if batchSize == 0 {
+			batchSize = 100
+		}
+
+		for {
+			// Check for cancellation or pause
+			o.mu.RLock()
+			paused := o.isPaused
+			cancelled := o.ctx.Err() != nil
+			o.mu.RUnlock()
+
+			if paused || cancelled {
+				return
+			}
+
+			// Fetch batch from source
+			records, err := o.config.SourceDB.GetBatch(o.ctx, afterID, batchSize)
+			if err != nil {
+				select {
+				case errChan <- fmt.Errorf("rollback scanning failed at %s: %w", afterID, err):
+				default:
+				}
+				return
+			}
+
+			if len(records) == 0 {
+				return // End of source reached before hitting targetStopID
+			}
+
+			// Extract IDs and check if we hit the stopping boundary
+			ids := make([]string, 0, len(records))
+			hitBoundary := false
+
+			for _, r := range records {
+				ids = append(ids, r.ID)
+				afterID = r.ID
+				if r.ID == targetStopID {
+					hitBoundary = true
+					break
+				}
+			}
+
+			// Push to workers
+			select {
+			case <-o.ctx.Done():
+				return // Context cancelled while waiting to push
+			case idChan <- ids:
+				// Pushed successfully
+			}
+
+			if hitBoundary {
+				return // We reached the last processed ID, stop scanning
+			}
+		}
+	}()
+
+	// Wait for workers to finish
+	wg.Wait()
+
+	// Check if any errors occurred
+	select {
+	case err := <-errChan:
+		o.fail(fmt.Sprintf("rollback failed: %v", err))
+		return err
+	default:
+	}
+
+	// Double check context error
+	if o.ctx.Err() != nil {
+		return fmt.Errorf("rollback interrupted: %w", o.ctx.Err())
+	}
+
+	// 4. Update Final State
+	o.mu.Lock()
+	o.stats.Status = "rolled_back"
+	o.mu.Unlock()
+
+	if err := o.config.StateTracker.SetState(migrationID, state.StateRolledBack); err != nil {
+		return fmt.Errorf("failed to update state to rolled_back: %w", err)
+	}
+
+	// Delete the checkpoint since data is gone
+	_ = o.config.StateTracker.DeleteCheckpoint(migrationID)
+
 	return nil
 }
 
@@ -248,10 +395,10 @@ func (o *BaseOrchestrator) GetStatus(migrationID string) (*MigrationStats, error
 	if migrationID != o.migrationID {
 		return nil, fmt.Errorf("migration ID mismatch")
 	}
-	
+
 	o.mu.RLock()
 	defer o.mu.RUnlock()
-	
+
 	// Return a copy
 	statsCopy := *o.stats
 	return &statsCopy, nil
@@ -262,13 +409,13 @@ func (o *BaseOrchestrator) Validate(migrationID string) error {
 	if migrationID != o.migrationID {
 		return fmt.Errorf("migration ID mismatch")
 	}
-	
+
 	// TODO: Implement validation logic
 	// Sample records from source and target
 	// Compare vectors (cosine similarity)
 	// Compare metadata
 	// Report discrepancies
-	
+
 	return nil
 }
 
@@ -276,11 +423,11 @@ func (o *BaseOrchestrator) Validate(migrationID string) error {
 func (o *BaseOrchestrator) complete() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	o.stats.Status = "completed"
 	o.stats.EndTime = time.Now().Format(time.RFC3339)
 	o.isRunning = false
-	
+
 	// Save final checkpoint
 	checkpoint := &state.Checkpoint{
 		MigrationID:      o.migrationID,
@@ -290,7 +437,7 @@ func (o *BaseOrchestrator) complete() {
 		StartedAt:        parseTime(o.stats.StartTime),
 		LastCheckpointAt: time.Now(),
 	}
-	
+
 	_ = o.config.StateTracker.SaveCheckpoint(checkpoint)
 	_ = o.config.StateTracker.SetState(o.migrationID, state.StateCompleted)
 }
@@ -299,11 +446,11 @@ func (o *BaseOrchestrator) complete() {
 func (o *BaseOrchestrator) fail(reason string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	
+
 	o.stats.Status = fmt.Sprintf("failed: %s", reason)
 	o.stats.EndTime = time.Now().Format(time.RFC3339)
 	o.isRunning = false
-	
+
 	_ = o.config.StateTracker.SetState(o.migrationID, state.StateFailed)
 }
 

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/AlphaTechini/vector-db-migration/internal/adapters"
@@ -121,7 +122,10 @@ func TestMigrationConfig(t *testing.T) {
 }
 
 // Mock implementations for testing
-type mockDatabase struct{}
+type mockDatabase struct {
+	records    []adapters.Record
+	deletedIDs []string
+}
 
 func (m *mockDatabase) Connect(ctx context.Context, config adapters.DBConfig) error {
 	return nil
@@ -132,7 +136,30 @@ func (m *mockDatabase) Close() error {
 }
 
 func (m *mockDatabase) GetBatch(ctx context.Context, afterID string, limit int) ([]adapters.Record, error) {
-	return []adapters.Record{}, nil
+	if len(m.records) == 0 {
+		return []adapters.Record{}, nil
+	}
+
+	startIndex := 0
+	if afterID != "" {
+		for i, r := range m.records {
+			if r.ID == afterID {
+				startIndex = i + 1
+				break
+			}
+		}
+	}
+
+	if startIndex >= len(m.records) {
+		return []adapters.Record{}, nil
+	}
+
+	endIndex := startIndex + limit
+	if endIndex > len(m.records) {
+		endIndex = len(m.records)
+	}
+
+	return m.records[startIndex:endIndex], nil
 }
 
 func (m *mockDatabase) UpsertBatch(ctx context.Context, records []adapters.Record) error {
@@ -140,6 +167,7 @@ func (m *mockDatabase) UpsertBatch(ctx context.Context, records []adapters.Recor
 }
 
 func (m *mockDatabase) DeleteBatch(ctx context.Context, ids []string) error {
+	m.deletedIDs = append(m.deletedIDs, ids...)
 	return nil
 }
 
@@ -181,7 +209,9 @@ func (m *mockMapper) GetTargetDB() string {
 	return "mock"
 }
 
-type mockStateTracker struct{}
+type mockStateTracker struct {
+	checkpoint *state.Checkpoint
+}
 
 func (m *mockStateTracker) GetState(migrationID string) (state.MigrationState, error) {
 	return state.StateInProgress, nil
@@ -192,7 +222,10 @@ func (m *mockStateTracker) SetState(migrationID string, s state.MigrationState) 
 }
 
 func (m *mockStateTracker) GetCheckpoint(migrationID string) (*state.Checkpoint, error) {
-	return nil, nil
+	if m.checkpoint != nil {
+		return m.checkpoint, nil
+	}
+	return nil, fmt.Errorf("not found")
 }
 
 func (m *mockStateTracker) SaveCheckpoint(checkpoint *state.Checkpoint) error {
@@ -219,3 +252,93 @@ func (m *mockStateTracker) GetMigrationSummary(migrationID string) (*state.Check
 var _ adapters.Database = (*mockDatabase)(nil)
 var _ mapper.SchemaMapper = (*mockMapper)(nil)
 var _ state.StateTracker = (*mockStateTracker)(nil)
+
+// TestBaseOrchestrator_Rollback tests rollback logic
+func TestBaseOrchestrator_Rollback(t *testing.T) {
+orchestrator := NewBaseOrchestrator("test-rollback")
+
+// Setup mocks
+sourceDB := &mockDatabase{
+records: []adapters.Record{
+{ID: "doc1"}, {ID: "doc2"}, {ID: "doc3"}, {ID: "doc4"}, {ID: "doc5"},
+},
+}
+targetDB := &mockDatabase{}
+tracker := &mockStateTracker{
+checkpoint: &state.Checkpoint{
+MigrationID:     "test-rollback",
+LastProcessedID: "doc3", // Rollback should stop here
+},
+}
+
+orchestrator.config = MigrationConfig{
+SourceDB:     sourceDB,
+TargetDB:     targetDB,
+StateTracker: tracker,
+BatchSize:    2,
+}
+
+// Test rollback execution
+err := orchestrator.Rollback("test-rollback")
+if err != nil {
+t.Fatalf("Failed to rollback: %v", err)
+}
+
+// Verify deleted IDs (order isn""t guaranteed due to concurrency, so check length and content)
+if len(targetDB.deletedIDs) != 3 {
+t.Errorf("Expected 3 deleted IDs, got %d", len(targetDB.deletedIDs))
+}
+
+deletedMap := make(map[string]bool)
+for _, id := range targetDB.deletedIDs {
+deletedMap[id] = true
+}
+
+for _, id := range []string{"doc1", "doc2", "doc3"} {
+if !deletedMap[id] {
+t.Errorf("Expected %s to be deleted", id)
+}
+}
+if deletedMap["doc4"] || deletedMap["doc5"] {
+t.Errorf("Did not expect doc4 or doc5 to be deleted")
+}
+
+t.Log(" BaseOrchestrator Rolls back correctly up to LastProcessedID")
+}
+
+
+// TestBaseOrchestrator_RollbackConcurrency tests concurrent workers
+func TestBaseOrchestrator_RollbackConcurrency(t *testing.T) {
+orchestrator := NewBaseOrchestrator("test-concurrency")
+
+records := make([]adapters.Record, 50)
+for i := 0; i < 50; i++ {
+records[i] = adapters.Record{ID: fmt.Sprintf("doc%d", i)}
+}
+
+sourceDB := &mockDatabase{records: records}
+targetDB := &mockDatabase{}
+tracker := &mockStateTracker{
+checkpoint: &state.Checkpoint{
+MigrationID:     "test-concurrency",
+LastProcessedID: "doc49", 
+},
+}
+
+orchestrator.config = MigrationConfig{
+SourceDB:     sourceDB,
+TargetDB:     targetDB,
+StateTracker: tracker,
+BatchSize:    5, // 10 batches of 5
+}
+
+err := orchestrator.Rollback("test-concurrency")
+if err != nil {
+t.Fatalf("Failed to rollback: %v", err)
+}
+
+if len(targetDB.deletedIDs) != 50 {
+t.Errorf("Expected 50 deleted IDs, got %d", len(targetDB.deletedIDs))
+}
+}
+
