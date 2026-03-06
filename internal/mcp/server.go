@@ -73,22 +73,27 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRequest)
 
-	// Build middleware chain (innermost to outermost)
+	// Build middleware chain.
+	// Middleware applied LAST wraps OUTERMOST and therefore executes FIRST.
+	// Execution order: audit → auth → rateLimiter → handler
+	//
+	// Audit must be outermost so it captures every request, including
+	// unauthenticated ones that auth rejects before reaching the handler.
 	var handler http.Handler = mux
 
-	// Add audit logging (outermost - logs everything)
-	if s.audit != nil {
-		handler = s.audit.Middleware(handler)
-	}
-
-	// Add rate limiting
+	// Innermost: rate limiting (only reached after auth succeeds)
 	if s.rateLimiter != nil {
 		handler = s.rateLimiter.Middleware(handler)
 	}
 
-	// Add authentication (innermost - closest to handler)
+	// Middle: authentication (rejects invalid keys before rate limiting)
 	if s.auth != nil {
 		handler = s.auth.Middleware(handler)
+	}
+
+	// Outermost: audit logging (runs first, sees all requests including 401s)
+	if s.audit != nil {
+		handler = s.audit.Middleware(handler)
 	}
 
 	s.server = &http.Server{

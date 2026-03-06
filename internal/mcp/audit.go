@@ -24,23 +24,26 @@ func (m *AuditMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// Extract request details
-		apiKey := GetAPIKeyFromContext(r.Context())
+		// Extract the API key directly from the Authorization header.
+		// We cannot use GetAPIKeyFromContext here because audit is outermost
+		// middleware and auth has not yet run — the context key is empty.
+		// Reading from the header lets us log every request, including 401s.
+		apiKey := extractAPIKey(r)
 		method := r.Method
 		path := r.URL.Path
 		clientIP := r.RemoteAddr
 
-		// Log request
+		// Log request (before inner middleware runs — captures even rejected requests)
 		m.logger.Printf("[AUDIT] %s %s from %s (key: %s)",
 			method, path, clientIP, maskString(apiKey, 4))
 
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		// Call next handler
+		// Call the rest of the middleware chain (auth → rateLimiter → handler)
 		next.ServeHTTP(wrapped, r)
 
-		// Log response
+		// Log response with final status code and latency
 		duration := time.Since(start)
 		m.logger.Printf("[AUDIT] %s %s completed in %v with status %d",
 			method, path, duration, wrapped.statusCode)

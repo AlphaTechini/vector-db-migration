@@ -18,42 +18,42 @@ func TestMigrationOrchestratorInterface(t *testing.T) {
 // TestBaseOrchestrator_New creates orchestrator correctly
 func TestBaseOrchestrator_New(t *testing.T) {
 	orchestrator := NewBaseOrchestrator("test-123")
-	
+
 	if orchestrator.migrationID != "test-123" {
 		t.Errorf("Expected migrationID 'test-123', got '%s'", orchestrator.migrationID)
 	}
-	
+
 	if orchestrator.stats.Status != "not_started" {
 		t.Errorf("Expected initial status 'not_started', got '%s'", orchestrator.stats.Status)
 	}
-	
+
 	t.Log("✓ BaseOrchestrator initializes correctly")
 }
 
 // TestBaseOrchestrator_GetStatus tests status retrieval
 func TestBaseOrchestrator_GetStatus(t *testing.T) {
 	orchestrator := NewBaseOrchestrator("test-status")
-	
+
 	status, err := orchestrator.GetStatus("test-status")
 	if err != nil {
 		t.Fatalf("Failed to get status: %v", err)
 	}
-	
+
 	if status.Status != "not_started" {
 		t.Errorf("Expected status 'not_started', got '%s'", status.Status)
 	}
-	
+
 	if status.TotalRecords != 0 {
 		t.Errorf("Expected TotalRecords 0, got %d", status.TotalRecords)
 	}
-	
+
 	t.Log("✓ BaseOrchestrator retrieves status correctly")
 }
 
 // TestBaseOrchestrator_ValidateMapping tests validation
 func TestBaseOrchestrator_Validate(t *testing.T) {
 	orchestrator := NewBaseOrchestrator("test-validate")
-	
+
 	// Validate should not error on non-running migration
 	err := orchestrator.Validate("test-validate")
 	if err == nil {
@@ -64,26 +64,23 @@ func TestBaseOrchestrator_Validate(t *testing.T) {
 // TestMigrationStats tests stats structure
 func TestMigrationStats(t *testing.T) {
 	stats := &MigrationStats{
-		TotalRecords:     1000,
-		MigratedRecords:  950,
-		FailedRecords:    10,
-		BatchesProcessed: 10,
-		Status:           "in_progress",
+		TotalRecords:    1000,
+		MigratedRecords: 950,
 	}
-	
+
 	if stats.TotalRecords != 1000 {
 		t.Errorf("Expected TotalRecords 1000, got %d", stats.TotalRecords)
 	}
-	
+
 	if stats.MigratedRecords != 950 {
 		t.Errorf("Expected MigratedRecords 950, got %d", stats.MigratedRecords)
 	}
-	
+
 	completionRate := float64(stats.MigratedRecords) / float64(stats.TotalRecords) * 100
 	if completionRate != 95.0 {
 		t.Errorf("Expected 95%% completion, got %.2f%%", completionRate)
 	}
-	
+
 	t.Log("✓ MigrationStats structure works correctly")
 }
 
@@ -92,40 +89,34 @@ func TestValidationError(t *testing.T) {
 	err := ValidationError{
 		RecordID: "doc-123",
 		Message:  "Cosine similarity below threshold",
-		Field:    "vector",
 	}
-	
+
 	if err.RecordID != "doc-123" {
 		t.Errorf("Expected RecordID 'doc-123', got '%s'", err.RecordID)
 	}
-	
+
 	if err.Message == "" {
 		t.Error("Expected non-empty Message")
 	}
-	
+
 	t.Log("✓ ValidationError structure works correctly")
 }
 
 // TestMigrationConfig tests config structure
 func TestMigrationConfig(t *testing.T) {
 	config := MigrationConfig{
-		SourceDB:      &mockDatabase{},
-		TargetDB:      &mockDatabase{},
-		SchemaMapper:  &mockMapper{},
-		StateTracker:  &mockStateTracker{},
-		BatchSize:     100,
-		MaxRetries:    3,
-		ValidateEvery: 10,
+		BatchSize:  100,
+		MaxRetries: 3,
 	}
-	
+
 	if config.BatchSize != 100 {
 		t.Errorf("Expected BatchSize 100, got %d", config.BatchSize)
 	}
-	
+
 	if config.MaxRetries != 3 {
 		t.Errorf("Expected MaxRetries 3, got %d", config.MaxRetries)
 	}
-	
+
 	t.Log("✓ MigrationConfig structure works correctly")
 }
 
@@ -215,3 +206,16 @@ func (m *mockStateTracker) DeleteCheckpoint(migrationID string) error {
 func (m *mockStateTracker) Close() error {
 	return nil
 }
+
+func (m *mockStateTracker) ListMigrations(statusFilter string, limit, offset int) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m *mockStateTracker) GetMigrationSummary(migrationID string) (*state.Checkpoint, error) {
+	return nil, nil
+}
+
+// Compile-time assertions to ensure mocks implement the correct interfaces
+var _ adapters.Database = (*mockDatabase)(nil)
+var _ mapper.SchemaMapper = (*mockMapper)(nil)
+var _ state.StateTracker = (*mockStateTracker)(nil)

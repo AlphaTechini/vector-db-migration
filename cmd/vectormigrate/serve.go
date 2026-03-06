@@ -91,15 +91,29 @@ func runServe(cmd *cobra.Command, args []string) error {
 		mcp.WithAuditLog(log.Default()),
 	)
 
-	// Start server
-	log.Println("   ▶️  Starting HTTP server...")
-	if err := server.Start(ctx); err != nil {
-		return fmt.Errorf("server failed: %w", err)
-	}
+	// Start server in a background goroutine.
+	// server.Start() calls ListenAndServe which blocks, so we must not call
+	// it on the main goroutine or the shutdown wait below would never be reached.
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Println("   ▶️  Starting HTTP server...")
+		if err := server.Start(ctx); err != nil {
+			serverErr <- err
+		}
+		close(serverErr)
+	}()
 
-	<-ctx.Done()
-	log.Println("✅ MCP server stopped")
-	return nil
+	// Wait for shutdown signal or server failure.
+	select {
+	case <-ctx.Done():
+		log.Println("✅ MCP server stopped")
+		return nil
+	case err := <-serverErr:
+		if err != nil {
+			return fmt.Errorf("server failed: %w", err)
+		}
+		return nil
+	}
 }
 
 // maskAPIKey hides most of the API key for logging
