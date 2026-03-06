@@ -127,9 +127,26 @@ Start a database migration.
 
 ### `rollback` - Rollback Migration
 
+Undo a failed or partial migration safely.
+
 ```bash
 ./vectormigrate rollback mig-123 --force
 ```
+
+#### 🏗️ Under the Hood: The "Concurrent Source-Scan" Rollback
+When designing the rollback feature, we had to choose the most efficient and robust way to "undo" a migration without slowing down the primary process or bloating your disk.
+
+**Why we chose this path:**
+1.  **No Additional Storage**: We initially considered keeping a local SQLite "journal" of every ID we moved, but for a 10M record database, stringing along millions of IDs on your local disk would cause massive IO bloat. 
+2.  **No "Hidden" Tags**: We also evaluated adding a hidden `_vm_mid` (migration ID) tag to your vectors' metadata for an "instant" delete. However, modifying your production data's schema just for an internal migration tool is an anti-pattern. 
+3.  **The Solution**: We rely on the **Source database as the truth**. When you rollback, our orchestrator checks the state tracker for the exact `LastProcessedID` where the failure occurred. It then spawns a fast Producer to scan the Source DB up to that point, and hands the IDs off to a **pool of 5 concurrent workers** that execute parallel `DeleteBatch` requests against the Target DB.
+
+**The result:** You get a rollback that keeps your metadata perfectly pure, requires zero extra local storage, and still runs blazingly fast due to the concurrent worker pool. 
+
+**Testing the Rollback:**
+Because concurrency can be tricky, we specifically designed tests in `orchestrator_test.go` to mock a Target database and a State Checkpoint. The tests prove two critical things:
+1.  **Strict Boundaries**: The test (`TestBaseOrchestrator_Rollback`) verifies that if a migration stops at ID 3 out of 5, the workers will *only* delete IDs 1 through 3, leaving 4 and 5 completely untouched.
+2.  **Concurrency Safety**: We added `TestBaseOrchestrator_RollbackConcurrency` to push large batches through the worker pool and guarantee no data races or lost IDs occur under multi-threaded load.
 
 ---
 
