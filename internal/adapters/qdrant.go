@@ -27,8 +27,8 @@ type qdrantPoint struct {
 
 // qdrantUpsertRequest represents Qdrant upsert request
 type qdrantUpsertRequest struct {
-	Collection string         `json:"collection"`
-	Points     []qdrantPoint  `json:"points"`
+	Collection string        `json:"collection"`
+	Points     []qdrantPoint `json:"points"`
 }
 
 // qdrantSearchRequest represents Qdrant search request
@@ -48,17 +48,17 @@ func (a *QdrantAdapter) Connect(ctx context.Context, config DBConfig) error {
 	if config.Type != "qdrant" {
 		return fmt.Errorf("expected type 'qdrant', got '%s'", config.Type)
 	}
-	
+
 	a.config = config
 	a.sourceURL = config.URL
 	a.baseURL = config.URL
-	
+
 	// Create HTTP client with timeout
 	timeout := time.Duration(config.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	
+
 	a.httpClient = &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -67,7 +67,7 @@ func (a *QdrantAdapter) Connect(ctx context.Context, config DBConfig) error {
 			IdleConnTimeout:     90 * time.Second,
 		},
 	}
-	
+
 	// Validate connection
 	return a.ValidateConnection(ctx)
 }
@@ -83,54 +83,54 @@ func (a *QdrantAdapter) Close() error {
 // GetBatch retrieves a batch of records from Qdrant
 func (a *QdrantAdapter) GetBatch(ctx context.Context, afterID string, limit int) ([]Record, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/scroll", a.baseURL, a.config.Index)
-	
+
 	request := struct {
-		Limit  int    `json:"limit"`
-		Offset string `json:"offset,omitempty"`
-		WithPayload bool `json:"with_payload"`
-		WithVector bool `json:"with_vector"`
+		Limit       int    `json:"limit"`
+		Offset      string `json:"offset,omitempty"`
+		WithPayload bool   `json:"with_payload"`
+		WithVector  bool   `json:"with_vector"`
 	}{
 		Limit:       limit,
 		Offset:      afterID,
 		WithPayload: true,
 		WithVector:  true,
 	}
-	
+
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scroll Qdrant: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("Qdrant API error (%d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	var scrollResp struct {
 		Result struct {
-			Points []qdrantPoint `json:"points"`
-			NextPageOffset string `json:"next_page_offset"`
+			Points         []qdrantPoint `json:"points"`
+			NextPageOffset string        `json:"next_page_offset"`
 		} `json:"result"`
 		Status string `json:"status"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&scrollResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	// Convert to our Record format
 	records := make([]Record, len(scrollResp.Result.Points))
 	for i, p := range scrollResp.Result.Points {
@@ -140,14 +140,14 @@ func (a *QdrantAdapter) GetBatch(ctx context.Context, afterID string, limit int)
 			Metadata: p.Payload,
 		}
 	}
-	
+
 	return records, nil
 }
 
 // UpsertBatch inserts or updates records in Qdrant
 func (a *QdrantAdapter) UpsertBatch(ctx context.Context, records []Record) error {
 	url := fmt.Sprintf("%s/collections/%s/points", a.baseURL, a.config.Index)
-	
+
 	// Convert to Qdrant format
 	points := make([]qdrantPoint, len(records))
 	for i, r := range records {
@@ -157,94 +157,157 @@ func (a *QdrantAdapter) UpsertBatch(ctx context.Context, records []Record) error
 			Payload: r.Metadata,
 		}
 	}
-	
+
 	request := qdrantUpsertRequest{
 		Collection: a.config.Index,
 		Points:     points,
 	}
-	
+
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to upsert to Qdrant: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Qdrant API error (%d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	return nil
 }
 
 // DeleteBatch deletes records from Qdrant by IDs
 func (a *QdrantAdapter) DeleteBatch(ctx context.Context, ids []string) error {
 	url := fmt.Sprintf("%s/collections/%s/points/delete", a.baseURL, a.config.Index)
-	
+
 	request := struct {
 		Points []string `json:"points"`
 	}{
 		Points: ids,
 	}
-	
+
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to delete from Qdrant: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("Qdrant API error (%d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	return nil
+}
+
+// GetByIDs retrieves specific records from Qdrant by their IDs
+func (a *QdrantAdapter) GetByIDs(ctx context.Context, ids []string) ([]Record, error) {
+	if len(ids) == 0 {
+		return []Record{}, nil
+	}
+
+	url := fmt.Sprintf("%s/collections/%s/points", a.baseURL, a.config.Index)
+
+	request := struct {
+		IDs         []string `json:"ids"`
+		WithVector  bool     `json:"with_vector"`
+		WithPayload bool     `json:"with_payload"`
+	}{
+		IDs:         ids,
+		WithVector:  true,
+		WithPayload: true,
+	}
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch from Qdrant: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("Qdrant API error (%d): %s", resp.StatusCode, string(body))
+	}
+
+	// Qdrant's /points endpoint returns a list of results.
+	// Depending on version/configuration, it might be result: []point
+	var rawResult struct {
+		Result []qdrantPoint `json:"result"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&rawResult); err != nil {
+		return nil, fmt.Errorf("failed to decode fetch response: %w", err)
+	}
+
+	records := make([]Record, 0, len(rawResult.Result))
+	for _, p := range rawResult.Result {
+		records = append(records, Record{
+			ID:       p.ID,
+			Vector:   p.Vector,
+			Metadata: p.Payload,
+		})
+	}
+
+	return records, nil
 }
 
 // ValidateConnection checks if Qdrant is accessible
 func (a *QdrantAdapter) ValidateConnection(ctx context.Context) error {
 	// Check cluster status
 	url := fmt.Sprintf("%s/cluster", a.baseURL)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create validation request: %w", err)
 	}
-	
+
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Qdrant: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Qdrant connection failed (status %d)", resp.StatusCode)
 	}
-	
+
 	return nil
 }
 
@@ -252,28 +315,28 @@ func (a *QdrantAdapter) ValidateConnection(ctx context.Context) error {
 func (a *QdrantAdapter) GetStats(ctx context.Context) (*DBStats, error) {
 	// Get collection info
 	url := fmt.Sprintf("%s/collections/%s", a.baseURL, a.config.Index)
-	
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stats request: %w", err)
 	}
-	
+
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stats from Qdrant: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Qdrant API error (%d)", resp.StatusCode)
 	}
-	
+
 	var collectionInfo struct {
 		Result struct {
-			Status      string `json:"status"`
+			Status       string `json:"status"`
 			VectorsCount int64  `json:"vectors_count"`
-			PointsCount int64  `json:"points_count"`
-			Config      struct {
+			PointsCount  int64  `json:"points_count"`
+			Config       struct {
 				Params struct {
 					Vectors struct {
 						Size     int    `json:"size"`
@@ -284,11 +347,11 @@ func (a *QdrantAdapter) GetStats(ctx context.Context) (*DBStats, error) {
 		} `json:"result"`
 		Status string `json:"status"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&collectionInfo); err != nil {
 		return nil, fmt.Errorf("failed to decode stats: %w", err)
 	}
-	
+
 	return &DBStats{
 		TotalRecords: collectionInfo.Result.VectorsCount,
 		Dimensions:   collectionInfo.Result.Config.Params.Vectors.Size,

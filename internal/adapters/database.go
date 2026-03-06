@@ -23,35 +23,38 @@ type DBStats struct {
 type Database interface {
 	// Connect establishes connection to the database
 	Connect(ctx context.Context, config DBConfig) error
-	
+
 	// Close closes the database connection
 	Close() error
-	
+
 	// GetBatch retrieves a batch of records after the given ID
 	GetBatch(ctx context.Context, afterID string, limit int) ([]Record, error)
-	
+
 	// UpsertBatch inserts or updates a batch of records
 	UpsertBatch(ctx context.Context, records []Record) error
-	
+
+	// GetByIDs retrieves specific records by their IDs
+	GetByIDs(ctx context.Context, ids []string) ([]Record, error)
+
 	// DeleteBatch deletes records by IDs
 	DeleteBatch(ctx context.Context, ids []string) error
-	
+
 	// ValidateConnection checks if the database is accessible
 	ValidateConnection(ctx context.Context) error
-	
+
 	// GetStats returns database statistics
 	GetStats(ctx context.Context) (*DBStats, error)
-	
+
 	// GetSourceURL returns the database source URL (for logging)
 	GetSourceURL() string
 }
 
 // DBConfig holds database connection configuration
 type DBConfig struct {
-	Type     string            `json:"type"` // pinecone, qdrant, weaviate
-	URL      string            `json:"url"`
-	APIKey   string            `json:"api_key"`
-	Index    string            `json:"index"` // Pinecone index name / Qdrant collection
-	Timeout  int               `json:"timeout_seconds"`
-	Extra    map[string]string `json:"extra,omitempty"` // Provider-specific settings
+	Type    string            `json:"type"` // pinecone, qdrant, weaviate
+	URL     string            `json:"url"`
+	APIKey  string            `json:"api_key"`
+	Index   string            `json:"index"` // Pinecone index name / Qdrant collection
+	Timeout int               `json:"timeout_seconds"`
+	Extra   map[string]string `json:"extra,omitempty"` // Provider-specific settings
 }

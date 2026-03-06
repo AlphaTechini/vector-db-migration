@@ -3,6 +3,8 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/AlphaTechini/vector-db-migration/internal/adapters"
@@ -49,17 +51,6 @@ func TestBaseOrchestrator_GetStatus(t *testing.T) {
 	}
 
 	t.Log("✓ BaseOrchestrator retrieves status correctly")
-}
-
-// TestBaseOrchestrator_ValidateMapping tests validation
-func TestBaseOrchestrator_Validate(t *testing.T) {
-	orchestrator := NewBaseOrchestrator("test-validate")
-
-	// Validate should not error on non-running migration
-	err := orchestrator.Validate("test-validate")
-	if err == nil {
-		t.Log("✓ Validate method exists (implementation TODO)")
-	}
 }
 
 // TestMigrationStats tests stats structure
@@ -125,6 +116,7 @@ func TestMigrationConfig(t *testing.T) {
 type mockDatabase struct {
 	records    []adapters.Record
 	deletedIDs []string
+	mu         sync.Mutex
 }
 
 func (m *mockDatabase) Connect(ctx context.Context, config adapters.DBConfig) error {
@@ -136,6 +128,9 @@ func (m *mockDatabase) Close() error {
 }
 
 func (m *mockDatabase) GetBatch(ctx context.Context, afterID string, limit int) ([]adapters.Record, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if len(m.records) == 0 {
 		return []adapters.Record{}, nil
 	}
@@ -167,8 +162,24 @@ func (m *mockDatabase) UpsertBatch(ctx context.Context, records []adapters.Recor
 }
 
 func (m *mockDatabase) DeleteBatch(ctx context.Context, ids []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.deletedIDs = append(m.deletedIDs, ids...)
 	return nil
+}
+
+func (m *mockDatabase) GetByIDs(ctx context.Context, ids []string) ([]adapters.Record, error) {
+	result := make([]adapters.Record, 0, len(ids))
+	idMap := make(map[string]adapters.Record)
+	for _, r := range m.records {
+		idMap[r.ID] = r
+	}
+	for _, id := range ids {
+		if r, ok := idMap[id]; ok {
+			result = append(result, r)
+		}
+	}
+	return result, nil
 }
 
 func (m *mockDatabase) ValidateConnection(ctx context.Context) error {
@@ -176,7 +187,7 @@ func (m *mockDatabase) ValidateConnection(ctx context.Context) error {
 }
 
 func (m *mockDatabase) GetStats(ctx context.Context) (*adapters.DBStats, error) {
-	return &adapters.DBStats{TotalRecords: 0}, nil
+	return &adapters.DBStats{TotalRecords: int64(len(m.records))}, nil
 }
 
 func (m *mockDatabase) GetSourceURL() string {
@@ -255,90 +266,183 @@ var _ state.StateTracker = (*mockStateTracker)(nil)
 
 // TestBaseOrchestrator_Rollback tests rollback logic
 func TestBaseOrchestrator_Rollback(t *testing.T) {
-orchestrator := NewBaseOrchestrator("test-rollback")
+	orchestrator := NewBaseOrchestrator("test-rollback")
 
-// Setup mocks
-sourceDB := &mockDatabase{
-records: []adapters.Record{
-{ID: "doc1"}, {ID: "doc2"}, {ID: "doc3"}, {ID: "doc4"}, {ID: "doc5"},
-},
-}
-targetDB := &mockDatabase{}
-tracker := &mockStateTracker{
-checkpoint: &state.Checkpoint{
-MigrationID:     "test-rollback",
-LastProcessedID: "doc3", // Rollback should stop here
-},
-}
+	// Setup mocks
+	sourceDB := &mockDatabase{
+		records: []adapters.Record{
+			{ID: "doc1"}, {ID: "doc2"}, {ID: "doc3"}, {ID: "doc4"}, {ID: "doc5"},
+		},
+	}
+	targetDB := &mockDatabase{}
+	tracker := &mockStateTracker{
+		checkpoint: &state.Checkpoint{
+			MigrationID:     "test-rollback",
+			LastProcessedID: "doc3", // Rollback should stop here
+		},
+	}
 
-orchestrator.config = MigrationConfig{
-SourceDB:     sourceDB,
-TargetDB:     targetDB,
-StateTracker: tracker,
-BatchSize:    2,
-}
+	orchestrator.config = MigrationConfig{
+		SourceDB:     sourceDB,
+		TargetDB:     targetDB,
+		StateTracker: tracker,
+		BatchSize:    2,
+	}
 
-// Test rollback execution
-err := orchestrator.Rollback("test-rollback")
-if err != nil {
-t.Fatalf("Failed to rollback: %v", err)
-}
+	// Test rollback execution
+	err := orchestrator.Rollback("test-rollback")
+	if err != nil {
+		t.Fatalf("Failed to rollback: %v", err)
+	}
 
-// Verify deleted IDs (order isn""t guaranteed due to concurrency, so check length and content)
-if len(targetDB.deletedIDs) != 3 {
-t.Errorf("Expected 3 deleted IDs, got %d", len(targetDB.deletedIDs))
-}
+	// Verify deleted IDs (order isn""t guaranteed due to concurrency, so check length and content)
+	if len(targetDB.deletedIDs) != 3 {
+		t.Errorf("Expected 3 deleted IDs, got %d", len(targetDB.deletedIDs))
+	}
 
-deletedMap := make(map[string]bool)
-for _, id := range targetDB.deletedIDs {
-deletedMap[id] = true
-}
+	deletedMap := make(map[string]bool)
+	for _, id := range targetDB.deletedIDs {
+		deletedMap[id] = true
+	}
 
-for _, id := range []string{"doc1", "doc2", "doc3"} {
-if !deletedMap[id] {
-t.Errorf("Expected %s to be deleted", id)
-}
-}
-if deletedMap["doc4"] || deletedMap["doc5"] {
-t.Errorf("Did not expect doc4 or doc5 to be deleted")
-}
+	for _, id := range []string{"doc1", "doc2", "doc3"} {
+		if !deletedMap[id] {
+			t.Errorf("Expected %s to be deleted", id)
+		}
+	}
+	if deletedMap["doc4"] || deletedMap["doc5"] {
+		t.Errorf("Did not expect doc4 or doc5 to be deleted")
+	}
 
-t.Log(" BaseOrchestrator Rolls back correctly up to LastProcessedID")
+	t.Log(" BaseOrchestrator Rolls back correctly up to LastProcessedID")
 }
-
 
 // TestBaseOrchestrator_RollbackConcurrency tests concurrent workers
 func TestBaseOrchestrator_RollbackConcurrency(t *testing.T) {
-orchestrator := NewBaseOrchestrator("test-concurrency")
+	orchestrator := NewBaseOrchestrator("test-concurrency")
 
-records := make([]adapters.Record, 50)
-for i := 0; i < 50; i++ {
-records[i] = adapters.Record{ID: fmt.Sprintf("doc%d", i)}
+	records := make([]adapters.Record, 50)
+	for i := 0; i < 50; i++ {
+		records[i] = adapters.Record{ID: fmt.Sprintf("doc%d", i)}
+	}
+
+	sourceDB := &mockDatabase{records: records}
+	targetDB := &mockDatabase{}
+	tracker := &mockStateTracker{
+		checkpoint: &state.Checkpoint{
+			MigrationID:     "test-concurrency",
+			LastProcessedID: "doc49",
+		},
+	}
+
+	orchestrator.config = MigrationConfig{
+		SourceDB:     sourceDB,
+		TargetDB:     targetDB,
+		StateTracker: tracker,
+		BatchSize:    5, // 10 batches of 5
+	}
+
+	err := orchestrator.Rollback("test-concurrency")
+	if err != nil {
+		t.Fatalf("Failed to rollback: %v", err)
+	}
+
+	if len(targetDB.deletedIDs) != 50 {
+		t.Errorf("Expected 50 deleted IDs, got %d", len(targetDB.deletedIDs))
+	}
 }
 
-sourceDB := &mockDatabase{records: records}
-targetDB := &mockDatabase{}
-tracker := &mockStateTracker{
-checkpoint: &state.Checkpoint{
-MigrationID:     "test-concurrency",
-LastProcessedID: "doc49", 
-},
+// TestBaseOrchestrator_Validate tests the validation mechanism
+func TestBaseOrchestrator_Validate(t *testing.T) {
+	orchestrator := NewBaseOrchestrator("test-validate")
+
+	// Create records with vectors
+	records := []adapters.Record{
+		{ID: "r1", Vector: []float32{1.0, 0.0, 0.0}},
+		{ID: "r2", Vector: []float32{0.0, 1.0, 0.0}},
+	}
+
+	mockSource := &mockDatabase{records: records}
+	mockTarget := &mockDatabase{records: records} // Exact same vectors
+
+	config := MigrationConfig{
+		SourceDB:     mockSource,
+		TargetDB:     mockTarget,
+		StateTracker: &mockStateTracker{},
+		SchemaMapper: &mockMapper{},
+	}
+
+	ctx := context.Background()
+	_ = orchestrator.Start(ctx, config)
+	orchestrator.Stop("test-validate") // Stop so we can validate
+
+	// 1. Successful validation
+	err := orchestrator.Validate("test-validate")
+	if err != nil {
+		t.Fatalf("Validation failed unexpectedly: %v", err)
+	}
+
+	stats, _ := orchestrator.GetStatus("test-validate")
+	if !strings.Contains(stats.Status, "validated:") {
+		t.Errorf("Expected status to contain 'validated:', got %s", stats.Status)
+	}
+
+	// 2. Failed validation (different vectors)
+	failedRecords := []adapters.Record{
+		{ID: "r1", Vector: []float32{1.0, 0.0, 0.0}},
+		{ID: "r2", Vector: []float32{0.0, 0.0, 1.0}}, // Completely different from r2 source
+	}
+	orchestrator.config.TargetDB = &mockDatabase{records: failedRecords}
+
+	err = orchestrator.Validate("test-validate")
+	if err != nil {
+		t.Fatalf("Validation error should be nil even if validation fails: %v", err)
+	}
+
+	stats, _ = orchestrator.GetStatus("test-validate")
+	if !strings.Contains(stats.Status, "validation_failed") {
+		t.Errorf("Expected status to contain 'validation_failed', got %s", stats.Status)
+	}
 }
 
-orchestrator.config = MigrationConfig{
-SourceDB:     sourceDB,
-TargetDB:     targetDB,
-StateTracker: tracker,
-BatchSize:    5, // 10 batches of 5
-}
+// TestBaseOrchestrator_ValidateFull tests the full scan validation strategy
+func TestBaseOrchestrator_ValidateFull(t *testing.T) {
+	orchestrator := NewBaseOrchestrator("test-validate-full")
 
-err := orchestrator.Rollback("test-concurrency")
-if err != nil {
-t.Fatalf("Failed to rollback: %v", err)
-}
+	// Create multiple records to test batching in full scan
+	records := make([]adapters.Record, 10)
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("f%d", i)
+		records[i] = adapters.Record{ID: id, Vector: []float32{1.0, float32(i), 0.0}}
+	}
 
-if len(targetDB.deletedIDs) != 50 {
-t.Errorf("Expected 50 deleted IDs, got %d", len(targetDB.deletedIDs))
-}
-}
+	mockSource := &mockDatabase{records: records}
+	mockTarget := &mockDatabase{records: records}
 
+	config := MigrationConfig{
+		SourceDB:         mockSource,
+		TargetDB:         mockTarget,
+		StateTracker:     &mockStateTracker{},
+		SchemaMapper:     &mockMapper{},
+		ValidationMethod: "full",
+		BatchSize:        5, // Force two batches of 5
+	}
+
+	ctx := context.Background()
+	_ = orchestrator.Start(ctx, config)
+	orchestrator.Stop("test-validate-full")
+
+	err := orchestrator.Validate("test-validate-full")
+	if err != nil {
+		t.Fatalf("Validation failed unexpectedly: %v", err)
+	}
+
+	stats, _ := orchestrator.GetStatus("test-validate-full")
+	if !strings.Contains(stats.Status, "validated_full:") {
+		t.Errorf("Expected status to contain 'validated_full:', got %s", stats.Status)
+	}
+
+	if !strings.Contains(stats.Status, "10/10 records passed") {
+		t.Errorf("Expected 10/10 passed, got %s", stats.Status)
+	}
+}

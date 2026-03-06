@@ -3,9 +3,12 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"math"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/AlphaTechini/vector-db-migration/internal/adapters"
 	"github.com/AlphaTechini/vector-db-migration/internal/state"
 )
 
@@ -244,10 +247,8 @@ func (o *BaseOrchestrator) Rollback(migrationID string) error {
 	o.isPaused = false
 	o.stats.Status = "rolling_back"
 
-	// Check if context exists, if not create one
-	if o.ctx == nil {
-		o.ctx, o.cancel = context.WithCancel(context.Background())
-	}
+	// Always create a fresh context for the rollback operation
+	o.ctx, o.cancel = context.WithCancel(context.Background())
 	o.mu.Unlock()
 
 	defer func() {
@@ -404,19 +405,202 @@ func (o *BaseOrchestrator) GetStatus(migrationID string) (*MigrationStats, error
 	return &statsCopy, nil
 }
 
-// Validate runs validation on migrated data
+// Validate runs validation on migrated data.
+// It uses a sampling strategy by default but can be configured for a full scan.
 func (o *BaseOrchestrator) Validate(migrationID string) error {
 	if migrationID != o.migrationID {
 		return fmt.Errorf("migration ID mismatch")
 	}
 
-	// TODO: Implement validation logic
-	// Sample records from source and target
-	// Compare vectors (cosine similarity)
-	// Compare metadata
-	// Report discrepancies
+	o.mu.Lock()
+	if o.isRunning {
+		o.mu.Unlock()
+		return fmt.Errorf("cannot validate a running migration; stop it first")
+	}
+
+	// Defensive check
+	if o.config.SourceDB == nil || o.config.TargetDB == nil {
+		o.mu.Unlock()
+		return fmt.Errorf("databases not configured for this migration")
+	}
+
+	// Always create a fresh context for the validation operation
+	o.ctx, o.cancel = context.WithCancel(context.Background())
+
+	o.isRunning = true
+	o.stats.Status = "validating"
+	o.mu.Unlock()
+
+	defer func() {
+		o.mu.Lock()
+		o.isRunning = false
+		o.mu.Unlock()
+	}()
+
+	// Use configured method, default to sampling
+	method := strings.ToLower(o.config.ValidationMethod)
+	sampleSize := o.config.SampleSize
+	if sampleSize <= 0 {
+		sampleSize = 100 // Default sample size
+	}
+
+	if method == "full" {
+		return o.validateFull()
+	}
+
+	return o.validateSampling(sampleSize)
+}
+
+func (o *BaseOrchestrator) validateFull() error {
+	// Full scan involves streaming both DBs.
+	// This is O(N) but 100% accurate.
+
+	const batchSize = 100
+	var afterID string
+	var totalSimilarity float64
+	var totalCount int64
+	var validCount int64
+	threshold := 0.99
+
+	for {
+		select {
+		case <-o.ctx.Done():
+			return o.ctx.Err()
+		default:
+		}
+
+		// 1. Get batch from source
+		sourceBatch, err := o.config.SourceDB.GetBatch(o.ctx, afterID, batchSize)
+		if err != nil {
+			return fmt.Errorf("failed to fetch source batch: %w", err)
+		}
+		if len(sourceBatch) == 0 {
+			break
+		}
+
+		// 2. Fetch counterparts from Target using GetByIDs (more efficient than full target scan)
+		ids := make([]string, 0, len(sourceBatch))
+		sourceMap := make(map[string]adapters.Record)
+		for _, r := range sourceBatch {
+			ids = append(ids, r.ID)
+			sourceMap[r.ID] = r
+			afterID = r.ID
+		}
+
+		targetBatch, err := o.config.TargetDB.GetByIDs(o.ctx, ids)
+		if err != nil {
+			return fmt.Errorf("failed to fetch target batch: %w", err)
+		}
+
+		// 3. Compare
+		for _, tr := range targetBatch {
+			sr, ok := sourceMap[tr.ID]
+			if !ok {
+				continue
+			}
+
+			sim := CosineSimilarity(sr.Vector, tr.Vector)
+			totalSimilarity += float64(sim)
+			totalCount++
+
+			if sim >= float32(threshold) {
+				validCount++
+			}
+		}
+
+		// Update progress
+		o.mu.Lock()
+		o.stats.Status = fmt.Sprintf("validating: %d records checked...", totalCount)
+		o.mu.Unlock()
+	}
+
+	o.mu.Lock()
+	if totalCount > 0 {
+		avgSim := totalSimilarity / float64(totalCount)
+		o.stats.Status = fmt.Sprintf("validated_full: %d/%d records passed (avg sim: %.4f)", validCount, totalCount, avgSim)
+	} else {
+		o.stats.Status = "validated_full: no records found"
+	}
+	o.mu.Unlock()
 
 	return nil
+}
+
+func (o *BaseOrchestrator) validateSampling(sampleSize int) error {
+	// 1. Get Source Batch to pick random IDs
+	// Actually, for simplicity in this MVP, we just take the FIRST N records.
+	// A more robust sampler would use GetStats to find the range and pick truly random.
+	records, err := o.config.SourceDB.GetBatch(o.ctx, "", sampleSize)
+	if err != nil {
+		return fmt.Errorf("failed to fetch sampling source: %w", err)
+	}
+
+	if len(records) == 0 {
+		return fmt.Errorf("no records found in source to validate")
+	}
+
+	ids := make([]string, 0, len(records))
+	sourceMap := make(map[string]adapters.Record)
+	for _, r := range records {
+		ids = append(ids, r.ID)
+		sourceMap[r.ID] = r
+	}
+
+	// 2. Fetch counterparts from Target
+	targetRecords, err := o.config.TargetDB.GetByIDs(o.ctx, ids)
+	if err != nil {
+		return fmt.Errorf("failed to fetch target records for validation: %w", err)
+	}
+
+	// 3. Compare
+	var totalSimilarity float64
+	var validCount int
+	threshold := 0.99 // can be configurable
+
+	for _, tr := range targetRecords {
+		sr, ok := sourceMap[tr.ID]
+		if !ok {
+			continue
+		}
+
+		sim := CosineSimilarity(sr.Vector, tr.Vector)
+		totalSimilarity += float64(sim)
+
+		if sim >= float32(threshold) {
+			validCount++
+		}
+	}
+
+	o.mu.Lock()
+	if validCount == len(targetRecords) && len(targetRecords) > 0 {
+		o.stats.Status = fmt.Sprintf("validated: %d/%d records passed (avg sim: %.4f)", validCount, len(targetRecords), totalSimilarity/float64(len(targetRecords)))
+	} else {
+		o.stats.Status = fmt.Sprintf("validation_failed: only %d/%d passed", validCount, len(targetRecords))
+	}
+	o.mu.Unlock()
+
+	return nil
+}
+
+// CosineSimilarity calculates the cosine similarity between two vectors.
+// It uses a simple loop that is easy for the compiler to optimize (SIMD-friendly).
+func CosineSimilarity(v1, v2 []float32) float32 {
+	if len(v1) != len(v2) || len(v1) == 0 {
+		return 0
+	}
+
+	var dotProduct, mag1, mag2 float32
+	for i := 0; i < len(v1); i++ {
+		dotProduct += v1[i] * v2[i]
+		mag1 += v1[i] * v1[i]
+		mag2 += v2[i] * v2[i]
+	}
+
+	sqrtMag := float32(math.Sqrt(float64(mag1)) * math.Sqrt(float64(mag2)))
+	if sqrtMag == 0 {
+		return 0
+	}
+	return dotProduct / sqrtMag
 }
 
 // complete marks migration as complete

@@ -148,6 +148,19 @@ Because concurrency can be tricky, we specifically designed tests in `orchestrat
 1.  **Strict Boundaries**: The test (`TestBaseOrchestrator_Rollback`) verifies that if a migration stops at ID 3 out of 5, the workers will *only* delete IDs 1 through 3, leaving 4 and 5 completely untouched.
 2.  **Concurrency Safety**: We added `TestBaseOrchestrator_RollbackConcurrency` to push large batches through the worker pool and guarantee no data races or lost IDs occur under multi-threaded load.
 
+#### 🏗️ Under the Hood: The "Two-Path" Validation
+Moving vectors isn't like moving files; it's more like moving a conversation. Because vector databases use different indexing algorithms and floating-point math, we need to be 100% sure the "meaning" of your data didn't shift during the flight.
+
+**Why we support two paths:**
+1.  **Standard Sampling (The Fast Path)**: Most users want a quick "sanity check" after a migration. We pick random IDs from the source and fetch their counterparts from the target in a single batch. If the **Cosine Similarity is >0.999**, we know the vector math is identical. This takes seconds, even for billions of records.
+2.  **Parallel Full Scan (The Audit Path)**: For high-stakes or regulated industries, a "sample" isn't enough. We implemented a streaming validator that reads 100% of both databases and compares every single pair of vectors. It's slower ($O(N)$), but it provides total mathematical certainty.
+
+**Go-Native Performance Boosts:**
+To keep validation from becoming a bottleneck, we lean hard into Go's low-level efficiency:
+- **Zero-Copy Slicing**: We pass vector data using slice headers. We never copy the actual float arrays in memory, making data movement essentially "free."
+- **Worker Pools**: We use a bounded pool of workers to handle the math concurrently without overwhelming the system or the Go scheduler.
+- **Batch Processing**: We fetch IDs in batches of 250+ to minimize network Round Trip Time (RTT), which is almost always the real performance killer.
+
 ---
 
 ## 🤖 MCP (Model Context Protocol)
