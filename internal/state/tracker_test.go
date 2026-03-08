@@ -122,6 +122,9 @@ func TestSQLiteTracker_Checkpoint(t *testing.T) {
 	if retrieved.ProcessedCount != checkpoint.ProcessedCount {
 		t.Errorf("Expected ProcessedCount=%d, got %d", checkpoint.ProcessedCount, retrieved.ProcessedCount)
 	}
+	if retrieved.BatchesProcessed != checkpoint.BatchesProcessed {
+		t.Errorf("Expected BatchesProcessed=%d, got %d", checkpoint.BatchesProcessed, retrieved.BatchesProcessed)
+	}
 	if retrieved.ValidationStats.AvgCosineSimilarity != checkpoint.ValidationStats.AvgCosineSimilarity {
 		t.Errorf("Expected AvgCosineSimilarity=%.3f, got %.3f", checkpoint.ValidationStats.AvgCosineSimilarity, retrieved.ValidationStats.AvgCosineSimilarity)
 	}
@@ -155,7 +158,7 @@ func TestSQLiteTracker_MultipleMigrations(t *testing.T) {
 
 	// Create multiple migrations
 	migrations := []string{"migration-1", "migration-2", "migration-3"}
-	
+
 	for i, id := range migrations {
 		// Set different states
 		states := []MigrationState{StateInProgress, StateCompleted, StateRolledBack}
@@ -191,7 +194,7 @@ func TestSQLiteTracker_MultipleMigrations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get checkpoint for %s: %v", id, err)
 		}
-		if checkpoint.ProcessedCount != int64((i + 1) * 100) {
+		if checkpoint.ProcessedCount != int64((i+1)*100) {
 			t.Errorf("Expected %s ProcessedCount=%d, got %d", id, (i+1)*100, checkpoint.ProcessedCount)
 		}
 	}

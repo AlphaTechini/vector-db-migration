@@ -90,9 +90,7 @@ func (t *MigrationStatusTool) execute(ctx context.Context, input map[string]inte
 			"migrated_records": checkpoint.ProcessedCount,
 			"percentage":       calculatePercentage(checkpoint.ProcessedCount, checkpoint.TotalRecords),
 		}
-		// Note: Bug #8 exists here regarding hard-coded 100 batch assumption,
-		// but we are leaving it for a separate focused fix as planned.
-		response["batches_processed"] = checkpoint.ProcessedCount / 100
+		response["batches_processed"] = checkpoint.BatchesProcessed
 		if !checkpoint.StartedAt.IsZero() {
 			response["started_at"] = checkpoint.StartedAt.Format("2006-01-02T15:04:05Z")
 		}

@@ -13,29 +13,30 @@ import (
 type MigrationState string
 
 const (
-	StateNotStarted   MigrationState = "not_started"
-	StateInProgress   MigrationState = "in_progress"
-	StateCompleted    MigrationState = "completed"
-	StateRolledBack   MigrationState = "rolled_back"
-	StateFailed       MigrationState = "failed"
+	StateNotStarted MigrationState = "not_started"
+	StateInProgress MigrationState = "in_progress"
+	StateCompleted  MigrationState = "completed"
+	StateRolledBack MigrationState = "rolled_back"
+	StateFailed     MigrationState = "failed"
 )
 
 // Checkpoint represents a migration checkpoint for resume-on-failure
 type Checkpoint struct {
-	MigrationID        string                 `json:"migration_id"`
-	LastProcessedID    string                 `json:"last_processed_id"`
-	TotalRecords       int64                  `json:"total_records"`
-	ProcessedCount     int64                  `json:"processed_count"`
-	FailedCount        int64                  `json:"failed_count"`
-	StartedAt          time.Time              `json:"started_at"`
-	LastCheckpointAt   time.Time              `json:"last_checkpoint_at"`
-	SchemaMapping      map[string]interface{} `json:"schema_mapping,omitempty"`
-	ValidationStats    ValidationStats        `json:"validation_stats,omitempty"`
+	MigrationID      string                 `json:"migration_id"`
+	LastProcessedID  string                 `json:"last_processed_id"`
+	TotalRecords     int64                  `json:"total_records"`
+	ProcessedCount   int64                  `json:"processed_count"`
+	BatchesProcessed int64                  `json:"batches_processed"`
+	FailedCount      int64                  `json:"failed_count"`
+	StartedAt        time.Time              `json:"started_at"`
+	LastCheckpointAt time.Time              `json:"last_checkpoint_at"`
+	SchemaMapping    map[string]interface{} `json:"schema_mapping,omitempty"`
+	ValidationStats  ValidationStats        `json:"validation_stats,omitempty"`
 }
 
 // ValidationStats tracks validation metrics
 type ValidationStats struct {
-	SampledCount      int64   `json:"sampled_count"`
+	SampledCount        int64   `json:"sampled_count"`
 	AvgCosineSimilarity float64 `json:"avg_cosine_similarity"`
 	MinCosineSimilarity float64 `json:"min_cosine_similarity"`
 	MaxCosineSimilarity float64 `json:"max_cosine_similarity"`
@@ -45,25 +46,25 @@ type ValidationStats struct {
 type StateTracker interface {
 	// GetState returns the current state of a migration
 	GetState(migrationID string) (MigrationState, error)
-	
+
 	// SetState updates the state of a migration
 	SetState(migrationID string, state MigrationState) error
-	
+
 	// GetCheckpoint returns the last checkpoint for a migration
 	GetCheckpoint(migrationID string) (*Checkpoint, error)
-	
+
 	// SaveCheckpoint saves a checkpoint for resume-on-failure
 	SaveCheckpoint(checkpoint *Checkpoint) error
-	
+
 	// DeleteCheckpoint removes a checkpoint (cleanup after completion)
 	DeleteCheckpoint(migrationID string) error
-	
+
 	// Close closes the underlying storage connection
 	Close() error
-	
+
 	// ListMigrations returns migration IDs with optional filtering
 	ListMigrations(statusFilter string, limit, offset int) ([]string, error)
-	
+
 	// GetMigrationSummary returns a migration summary by ID
 	GetMigrationSummary(migrationID string) (*Checkpoint, error)
 }
@@ -117,7 +118,7 @@ func createTables(db *sql.DB) error {
 // GetState returns the current state of a migration
 func (t *SQLiteTracker) GetState(migrationID string) (MigrationState, error) {
 	query := `SELECT state FROM migrations WHERE migration_id = ?`
-	
+
 	var state string
 	err := t.db.QueryRow(query, migrationID).Scan(&state)
 	if err == sql.ErrNoRows {
@@ -151,7 +152,7 @@ func (t *SQLiteTracker) SetState(migrationID string, state MigrationState) error
 // GetCheckpoint returns the last checkpoint for a migration
 func (t *SQLiteTracker) GetCheckpoint(migrationID string) (*Checkpoint, error) {
 	query := `SELECT checkpoint_data FROM checkpoints WHERE migration_id = ?`
-	
+
 	var jsonData string
 	err := t.db.QueryRow(query, migrationID).Scan(&jsonData)
 	if err == sql.ErrNoRows {
@@ -225,21 +226,21 @@ func (t *SQLiteTracker) Close() error {
 func (t *SQLiteTracker) ListMigrations(statusFilter string, limit, offset int) ([]string, error) {
 	query := `SELECT migration_id FROM migrations`
 	args := []interface{}{}
-	
+
 	if statusFilter != "" {
 		query += ` WHERE state = ?`
 		args = append(args, statusFilter)
 	}
-	
+
 	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
-	
+
 	rows, err := t.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list migrations: %w", err)
 	}
 	defer rows.Close()
-	
+
 	var ids []string
 	for rows.Next() {
 		var id string
@@ -248,7 +249,7 @@ func (t *SQLiteTracker) ListMigrations(statusFilter string, limit, offset int) (
 		}
 		ids = append(ids, id)
 	}
-	
+
 	return ids, nil
 }
 

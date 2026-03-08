@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/AlphaTechini/vector-db-migration/internal/mcp"
 	"github.com/AlphaTechini/vector-db-migration/internal/state"
@@ -219,5 +220,52 @@ func TestMigrationStatusTool_Execute_WithAllFields(t *testing.T) {
 		if _, exists := resultMap[field]; !exists {
 			t.Errorf("Expected field '%s' in response", field)
 		}
+	}
+}
+func TestMigrationStatusTool_Execute_WithBatches(t *testing.T) {
+	stateTracker, _ := state.NewSQLiteTracker(":memory:")
+	defer stateTracker.Close()
+
+	// 1. Save a checkpoint with specific BatchesProcessed
+	checkpoint := &state.Checkpoint{
+		MigrationID:      "mig-batches",
+		TotalRecords:     1000,
+		ProcessedCount:   500,
+		BatchesProcessed: 5, // 100 per batch
+		StartedAt:        time.Now(),
+	}
+	stateTracker.SaveCheckpoint(checkpoint)
+
+	tool := NewMigrationStatusTool(stateTracker)
+	ctx := context.Background()
+
+	params := map[string]interface{}{
+		"migration_id": "mig-batches",
+	}
+
+	result, err := tool.execute(ctx, params)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	resultMap := result.(map[string]interface{})
+
+	// 2. Verify batches_processed matches exactly what we saved (not calculated)
+	if resultMap["batches_processed"] != int64(5) {
+		t.Errorf("Expected batches_processed 5, got %v", resultMap["batches_processed"])
+	}
+
+	// 3. Test with a different batch ratio to ensure no hardcoding
+	checkpoint.MigrationID = "mig-custom"
+	checkpoint.ProcessedCount = 500
+	checkpoint.BatchesProcessed = 2 // maybe batch size 250
+	stateTracker.SaveCheckpoint(checkpoint)
+
+	params["migration_id"] = "mig-custom"
+	result, _ = tool.execute(ctx, params)
+	resultMap = result.(map[string]interface{})
+
+	if resultMap["batches_processed"] != int64(2) {
+		t.Errorf("Expected batches_processed 2, got %v", resultMap["batches_processed"])
 	}
 }
