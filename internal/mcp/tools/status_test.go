@@ -11,7 +11,7 @@ import (
 func TestMigrationStatusTool_Register(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	registry := mcp.NewToolRegistry()
 
@@ -42,7 +42,7 @@ func TestMigrationStatusTool_Register(t *testing.T) {
 func TestMigrationStatusTool_InputSchema(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	schema := tool.inputSchema()
 
@@ -84,7 +84,7 @@ func TestMigrationStatusTool_InputSchema(t *testing.T) {
 func TestMigrationStatusTool_Execute_Success(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
@@ -128,7 +128,7 @@ func TestMigrationStatusTool_Execute_Success(t *testing.T) {
 func TestMigrationStatusTool_Execute_MissingParam(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
@@ -149,7 +149,7 @@ func TestMigrationStatusTool_Execute_MissingParam(t *testing.T) {
 func TestMigrationStatusTool_Execute_EmptyParam(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
@@ -164,28 +164,33 @@ func TestMigrationStatusTool_Execute_EmptyParam(t *testing.T) {
 	}
 }
 
-func TestMigrationStatusTool_Execute_WrongType(t *testing.T) {
+func TestMigrationStatusTool_Execute_WeaklyTyped(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 
-	// Wrong type (number instead of string)
+	// Weakly typed input (number instead of string) is supported
 	params := map[string]interface{}{
 		"migration_id": 123,
 	}
 
-	_, err := tool.execute(ctx, params)
-	if err == nil {
-		t.Error("Expected error for wrong type")
+	result, err := tool.execute(ctx, params)
+	if err != nil {
+		t.Fatalf("Expected weakly typed numeric input to be cast to string successfully, got error: %v", err)
+	}
+
+	resultMap := result.(map[string]interface{})
+	if resultMap["migration_id"] != "123" {
+		t.Errorf("Expected migration_id '123', got '%v'", resultMap["migration_id"])
 	}
 }
 
 func TestMigrationStatusTool_Execute_WithAllFields(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewMigrationStatusTool(stateTracker)
 	ctx := context.Background()
 

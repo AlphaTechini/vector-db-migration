@@ -11,7 +11,7 @@ import (
 func TestListMigrationsTool_Register(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	registry := mcp.NewToolRegistry()
 
@@ -37,7 +37,7 @@ func TestListMigrationsTool_Register(t *testing.T) {
 func TestListMigrationsTool_InputSchema(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	schema := tool.inputSchema()
 
@@ -73,7 +73,7 @@ func TestListMigrationsTool_InputSchema(t *testing.T) {
 func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
@@ -107,7 +107,7 @@ func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 	total := getInt(resultMap["total"], "total")
 	limit := getInt(resultMap["limit"], "limit")
 	offset := getInt(resultMap["offset"], "offset")
-	
+
 	if total != 0 {
 		t.Errorf("Expected total 0, got %d", total)
 	}
@@ -122,11 +122,12 @@ func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 func TestListMigrationsTool_Execute_CustomLimit(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
 	params := map[string]interface{}{
+		// Pass an int, mapstructure will use it directly
 		"limit": 10,
 	}
 
@@ -136,15 +137,22 @@ func TestListMigrationsTool_Execute_CustomLimit(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if int(resultMap["limit"].(float64)) != 10 {
-		t.Errorf("Expected limit 10, got %v", resultMap["limit"])
+
+	// The returned limit is now an int, not a float64
+	limit, ok := resultMap["limit"].(int)
+	if !ok {
+		t.Fatalf("Expected limit to be int, got %T", resultMap["limit"])
+	}
+
+	if limit != 10 {
+		t.Errorf("Expected limit 10, got %v", limit)
 	}
 }
 
 func TestListMigrationsTool_Execute_StatusFilter(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
@@ -166,7 +174,7 @@ func TestListMigrationsTool_Execute_StatusFilter(t *testing.T) {
 func TestListMigrationsTool_Execute_Sorting(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
@@ -190,7 +198,7 @@ func TestListMigrationsTool_Execute_Sorting(t *testing.T) {
 func TestListMigrationsTool_Execute_Pagination(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
@@ -205,11 +213,21 @@ func TestListMigrationsTool_Execute_Pagination(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if int(resultMap["limit"].(float64)) != 10 {
-		t.Errorf("Expected limit 10, got %v", resultMap["limit"])
+
+	limit, ok := resultMap["limit"].(int)
+	if !ok {
+		t.Fatalf("Expected limit to be int, got %T", resultMap["limit"])
 	}
-	if int(resultMap["offset"].(float64)) != 20 {
-		t.Errorf("Expected offset 20, got %v", resultMap["offset"])
+	if limit != 10 {
+		t.Errorf("Expected limit 10, got %v", limit)
+	}
+
+	offset, ok := resultMap["offset"].(int)
+	if !ok {
+		t.Fatalf("Expected offset to be int, got %T", resultMap["offset"])
+	}
+	if offset != 20 {
+		t.Errorf("Expected offset 20, got %v", offset)
 	}
 }
 
@@ -220,7 +238,7 @@ func TestValidateStatus_ValidStatuses(t *testing.T) {
 		if !validateStatus(status) {
 			t.Errorf("Expected '%s' to be valid", status)
 		}
-		
+
 		// Also test case-insensitive
 		if !validateStatus(status) {
 			t.Errorf("Expected '%s' (uppercase) to be valid", status)
@@ -241,7 +259,7 @@ func TestValidateStatus_InvalidStatus(t *testing.T) {
 func TestListMigrationsTool_Execute_MaxLimit(t *testing.T) {
 	stateTracker, _ := state.NewSQLiteTracker(":memory:")
 	defer stateTracker.Close()
-	
+
 	tool := NewListMigrationsTool(stateTracker)
 	ctx := context.Background()
 
@@ -255,7 +273,13 @@ func TestListMigrationsTool_Execute_MaxLimit(t *testing.T) {
 	}
 
 	resultMap := result.(map[string]interface{})
-	if int(resultMap["limit"].(float64)) != 500 {
-		t.Errorf("Expected limit 500, got %v", resultMap["limit"])
+
+	limit, ok := resultMap["limit"].(int)
+	if !ok {
+		t.Fatalf("Expected limit to be int, got %T", resultMap["limit"])
+	}
+
+	if limit != 500 {
+		t.Errorf("Expected limit 500, got %v", limit)
 	}
 }

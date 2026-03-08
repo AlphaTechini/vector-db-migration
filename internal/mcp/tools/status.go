@@ -13,6 +13,11 @@ type MigrationStatusTool struct {
 	stateTracker state.StateTracker
 }
 
+// CheckStatusParams holds strongly-typed input parameters for the tool
+type CheckStatusParams struct {
+	MigrationID string `json:"migration_id"`
+}
+
 // NewMigrationStatusTool creates a new migration_status tool
 func NewMigrationStatusTool(stateTracker state.StateTracker) *MigrationStatusTool {
 	return &MigrationStatusTool{
@@ -46,28 +51,33 @@ func (t *MigrationStatusTool) inputSchema() map[string]interface{} {
 }
 
 // execute runs the migration_status tool
-func (t *MigrationStatusTool) execute(ctx context.Context, params map[string]interface{}) (interface{}, error) {
-	// Validate inputs
-	migrationID, ok := params["migration_id"].(string)
-	if !ok || migrationID == "" {
+func (t *MigrationStatusTool) execute(ctx context.Context, input map[string]interface{}) (interface{}, error) {
+	// 1. Decode generic map into strict Go struct
+	var params CheckStatusParams
+	if err := DecodeParams(input, &params); err != nil {
+		return nil, fmt.Errorf("invalid parameters: %w", err)
+	}
+
+	// 2. Validate inputs
+	if params.MigrationID == "" {
 		return nil, fmt.Errorf("migration_id is required and must be a non-empty string")
 	}
 
-	// Query state tracker for actual status
-	checkpoint, err := t.stateTracker.GetCheckpoint(migrationID)
+	// 3. Query state tracker for actual status
+	checkpoint, err := t.stateTracker.GetCheckpoint(params.MigrationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get checkpoint: %w", err)
 	}
 
-	// Get migration state
-	state, err := t.stateTracker.GetState(migrationID)
+	// 4. Get migration state
+	state, err := t.stateTracker.GetState(params.MigrationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get state: %w", err)
 	}
 
-	// Build response
+	// 5. Build response
 	response := map[string]interface{}{
-		"migration_id":      migrationID,
+		"migration_id":      params.MigrationID,
 		"status":            string(state),
 		"batches_processed": 0,
 		"started_at":        nil,
@@ -80,7 +90,9 @@ func (t *MigrationStatusTool) execute(ctx context.Context, params map[string]int
 			"migrated_records": checkpoint.ProcessedCount,
 			"percentage":       calculatePercentage(checkpoint.ProcessedCount, checkpoint.TotalRecords),
 		}
-		response["batches_processed"] = checkpoint.ProcessedCount / 100 // Assume 100 records per batch
+		// Note: Bug #8 exists here regarding hard-coded 100 batch assumption,
+		// but we are leaving it for a separate focused fix as planned.
+		response["batches_processed"] = checkpoint.ProcessedCount / 100
 		if !checkpoint.StartedAt.IsZero() {
 			response["started_at"] = checkpoint.StartedAt.Format("2006-01-02T15:04:05Z")
 		}

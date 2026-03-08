@@ -161,6 +161,21 @@ To keep validation from becoming a bottleneck, we lean hard into Go's low-level 
 - **Worker Pools**: We use a bounded pool of workers to handle the math concurrently without overwhelming the system or the Go scheduler.
 - **Batch Processing**: We fetch IDs in batches of 250+ to minimize network Round Trip Time (RTT), which is almost always the real performance killer.
 
+#### 🏗️ Under the Hood: The O(1) LRU Rate Limiter
+When designing the MCP server's rate limiting, we initially used a simple map to track request buckets per IP/User. However, we quickly realized a critical flaw: a map grows indefinitely, leading to memory leaks over time as stale users never get cleaned up.
+
+**Why we chose the LRU cache over background sweepers:**
+1.  **No Background Jitter**: A standard approach is to run a background goroutine ticking every minute to delete old buckets. We rejected this because background tasks introduce unpredictable CPU jitter and complicate graceful shutdowns. 
+2.  **Strict Memory Ceiling**: By using a Least-Recently-Used (LRU) cache via Go's internal `container/list`, we enforce a hard limit on the number of tracked buckets (e.g., 10,000 users). 
+3.  **Passive Tail Eviction**: Instead of sweeping the whole map, *every* incoming request simply checks the oldest item at the tail of the linked list. If that item has expired, we delete it. This $O(1)$ cleanup amortizes the cost of garbage collection across requests seamlessly, keeping memory completely flat without background threads.
+
+#### 🏗️ Under the Hood: Clean Architecture Parameter Parsing
+Decoding JSON configurations into strongly-typed languages like Go is notorious for friction. JSON represents all numbers as `float64`, which leads to fragile `interface{}` type assertions and cryptic panics when standard integers are passed.
+
+**Why we adopted `mapstructure`:**
+1.  **Weakly Typed Resilience**: Instead of fighting JSON spec standards, we integrated `github.com/mitchellh/mapstructure` and enabled `WeaklyTypedInput`. This allows the orchestrator to dynamically coercer floats, strings, and ints into explicit Go structs without crashing.
+2.  **Decoupling Logic**: This enforces a strict Clean Architecture boundary. MCP tools no longer parse raw maps; they define a strict Input Struct, decode once at the edge, and run business logic securely.
+
 ---
 
 ## 🤖 MCP (Model Context Protocol)
