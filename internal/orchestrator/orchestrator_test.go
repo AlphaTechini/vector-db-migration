@@ -251,8 +251,12 @@ func (m *mockStateTracker) Close() error {
 	return nil
 }
 
-func (m *mockStateTracker) ListMigrations(statusFilter string, limit, offset int) ([]string, error) {
+func (m *mockStateTracker) ListMigrations(statusFilter, sortBy, sortOrder string, limit, offset int) ([]string, error) {
 	return []string{}, nil
+}
+
+func (m *mockStateTracker) GetTotalMigrationsCount(statusFilter string) (int64, error) {
+	return 0, nil
 }
 
 func (m *mockStateTracker) GetMigrationSummary(migrationID string) (*state.Checkpoint, error) {

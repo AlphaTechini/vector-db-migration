@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -115,18 +114,24 @@ func (t *ListMigrationsTool) execute(ctx context.Context, input map[string]inter
 		params.SortOrder = "desc"
 	}
 
-	// 3. Query state tracker
+	// 3. Query state tracker for true total count
 	statusStr := ""
 	if params.Status != "" && validateStatus(params.Status) {
 		statusStr = params.Status
 	}
 
-	migrationIDs, err := t.stateTracker.ListMigrations(statusStr, params.Limit+params.Offset, 0)
+	totalCount, err := t.stateTracker.GetTotalMigrationsCount(statusStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total count: %w", err)
+	}
+
+	// 4. Get the paginated and sorted slice natively from SQLite
+	migrationIDs, err := t.stateTracker.ListMigrations(statusStr, params.SortBy, params.SortOrder, params.Limit, params.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list migrations: %w", err)
 	}
 
-	// 4. Build migration summaries
+	// 5. Build migration summaries
 	migrations := make([]MigrationSummary, 0, len(migrationIDs))
 	for _, id := range migrationIDs {
 		checkpoint, err := t.stateTracker.GetCheckpoint(id)
@@ -163,41 +168,9 @@ func (t *ListMigrationsTool) execute(ctx context.Context, input map[string]inter
 		migrations = append(migrations, summary)
 	}
 
-	// 5. Apply sorting
-	sort.Slice(migrations, func(i, j int) bool {
-		switch params.SortBy {
-		case "migration_id":
-			if params.SortOrder == "desc" {
-				return migrations[i].MigrationID > migrations[j].MigrationID
-			}
-			return migrations[i].MigrationID < migrations[j].MigrationID
-		case "status":
-			if params.SortOrder == "desc" {
-				return migrations[i].Status > migrations[j].Status
-			}
-			return migrations[i].Status < migrations[j].Status
-		default: // created_at
-			if params.SortOrder == "desc" {
-				return migrations[i].CreatedAt > migrations[j].CreatedAt
-			}
-			return migrations[i].CreatedAt < migrations[j].CreatedAt
-		}
-	})
-
-	// 6. Apply pagination (in memory, consider shifting to DB later per Bug #7)
-	start := params.Offset
-	end := start + params.Limit
-	if start > len(migrations) {
-		migrations = []MigrationSummary{}
-	} else if end > len(migrations) {
-		migrations = migrations[start:]
-	} else {
-		migrations = migrations[start:end]
-	}
-
 	return map[string]interface{}{
 		"migrations": migrations,
-		"total":      len(migrationIDs),
+		"total":      totalCount,
 		"limit":      params.Limit,
 		"offset":     params.Offset,
 	}, nil

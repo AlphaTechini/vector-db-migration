@@ -91,15 +91,17 @@ func TestListMigrationsTool_Execute_DefaultParams(t *testing.T) {
 		t.Error("Expected migrations array in response")
 	}
 
-	// Helper to safely get int from interface (handles both int and float64)
+	// Helper to safely get int from interface (handles int, int64, and float64)
 	getInt := func(v interface{}, name string) int {
 		switch val := v.(type) {
 		case int:
 			return val
+		case int64:
+			return int(val)
 		case float64:
 			return int(val)
 		default:
-			t.Errorf("Expected %s to be int or float64, got %T", name, v)
+			t.Errorf("Expected %s to be int, int64, or float64, got %T", name, v)
 			return 0
 		}
 	}

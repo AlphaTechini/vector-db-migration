@@ -62,8 +62,11 @@ type StateTracker interface {
 	// Close closes the underlying storage connection
 	Close() error
 
-	// ListMigrations returns migration IDs with optional filtering
-	ListMigrations(statusFilter string, limit, offset int) ([]string, error)
+	// ListMigrations returns migration IDs with optional filtering and sorting
+	ListMigrations(statusFilter, sortBy, sortOrder string, limit, offset int) ([]string, error)
+
+	// GetTotalMigrationsCount returns the total number of migrations matching the filter
+	GetTotalMigrationsCount(statusFilter string) (int64, error)
 
 	// GetMigrationSummary returns a migration summary by ID
 	GetMigrationSummary(migrationID string) (*Checkpoint, error)
@@ -222,8 +225,26 @@ func (t *SQLiteTracker) Close() error {
 	return nil
 }
 
+// GetTotalMigrationsCount returns the total number of migrations matching the filter
+func (t *SQLiteTracker) GetTotalMigrationsCount(statusFilter string) (int64, error) {
+	query := `SELECT COUNT(migration_id) FROM migrations`
+	args := []interface{}{}
+
+	if statusFilter != "" {
+		query += ` WHERE state = ?`
+		args = append(args, statusFilter)
+	}
+
+	var count int64
+	err := t.db.QueryRow(query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count migrations: %w", err)
+	}
+	return count, nil
+}
+
 // ListMigrations returns a list of all migration IDs with optional filtering
-func (t *SQLiteTracker) ListMigrations(statusFilter string, limit, offset int) ([]string, error) {
+func (t *SQLiteTracker) ListMigrations(statusFilter, sortBy, sortOrder string, limit, offset int) ([]string, error) {
 	query := `SELECT migration_id FROM migrations`
 	args := []interface{}{}
 
@@ -232,7 +253,25 @@ func (t *SQLiteTracker) ListMigrations(statusFilter string, limit, offset int) (
 		args = append(args, statusFilter)
 	}
 
-	query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+	// Sanitize sortBy
+	validSortColumns := map[string]string{
+		"migration_id": "migration_id",
+		"state":        "state",
+		"status":       "state",
+		"created_at":   "created_at",
+	}
+	sortCol, ok := validSortColumns[sortBy]
+	if !ok {
+		sortCol = "created_at"
+	}
+
+	// Sanitize sortOrder
+	orderDir := "DESC"
+	if sortOrder == "asc" {
+		orderDir = "ASC"
+	}
+
+	query += fmt.Sprintf(` ORDER BY %s %s LIMIT ? OFFSET ?`, sortCol, orderDir)
 	args = append(args, limit, offset)
 
 	rows, err := t.db.Query(query, args...)
