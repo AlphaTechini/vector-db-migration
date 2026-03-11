@@ -148,9 +148,9 @@ func TestSchemaRecommendationTool_Execute_WithSourceSchema(t *testing.T) {
 		"source_type": "pinecone",
 		"target_type": "qdrant",
 		"source_schema": map[string]interface{}{
-			"id":      "string",
-			"title":   "string",
-			"content": "text",
+			"id":           "string",
+			"title":        "string",
+			"content":      "text",
 			"custom_field": "string",
 		},
 	}
@@ -186,8 +186,8 @@ func TestSchemaRecommendationTool_DatabaseSpecificWarnings(t *testing.T) {
 	ctx := context.Background()
 
 	testCases := []struct {
-		source string
-		target string
+		source        string
+		target        string
 		expectWarning string
 	}{
 		{"pinecone", "qdrant", "flat metadata"},
@@ -214,7 +214,7 @@ func TestSchemaRecommendationTool_DatabaseSpecificWarnings(t *testing.T) {
 		}
 
 		if !foundWarning {
-			t.Errorf("Expected warning about '%s' for %s→%s migration", 
+			t.Errorf("Expected warning about '%s' for %s→%s migration",
 				tc.expectWarning, tc.source, tc.target)
 		}
 	}
@@ -225,8 +225,8 @@ func TestSchemaRecommendationTool_ConfidenceScores(t *testing.T) {
 	ctx := context.Background()
 
 	testCases := []struct {
-		source string
-		target string
+		source        string
+		target        string
 		minConfidence float64
 	}{
 		{"pinecone", "qdrant", 0.85},
@@ -254,15 +254,19 @@ func TestSchemaRecommendationTool_ConfidenceScores(t *testing.T) {
 
 func TestFieldRecommendation_Structure(t *testing.T) {
 	rec := FieldRecommendation{
-		SourceField: "test",
-		TargetField: "test_mapped",
-		Confidence:  0.9,
+		SourceField:      "test",
+		TargetField:      "test_mapped",
+		Confidence:       0.9,
 		ConversionNeeded: true,
-		Notes:       "Test notes",
+		Notes:            "Test notes",
 	}
 
 	if rec.SourceField != "test" {
 		t.Errorf("Expected SourceField 'test', got '%s'", rec.SourceField)
+	}
+
+	if rec.TargetField != "test_mapped" {
+		t.Errorf("Expected TargetField 'test_mapped', got '%s'", rec.TargetField)
 	}
 
 	if rec.Confidence != 0.9 {
@@ -272,14 +276,18 @@ func TestFieldRecommendation_Structure(t *testing.T) {
 	if !rec.ConversionNeeded {
 		t.Error("Expected ConversionNeeded to be true")
 	}
+
+	if rec.Notes != "Test notes" {
+		t.Errorf("Expected Notes 'Test notes', got '%s'", rec.Notes)
+	}
 }
 
 // Helper function
 func containsIgnoreCase(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		(s == substr || 
-		 len(s) > len(substr) && 
-		 (containsLower(s, substr)))
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			len(s) > len(substr) &&
+				(containsLower(s, substr)))
 }
 
 func containsLower(s, substr string) bool {
