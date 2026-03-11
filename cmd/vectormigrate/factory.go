@@ -58,24 +58,21 @@ func createMapper(sourceType, targetType string) (mapper.SchemaMapper, error) {
 		return mapper.NewPineconeQdrantMapper(), nil
 
 	case "qdrant_to_pinecone":
-		// TODO: Implement QdrantToPineconeMapper
-		return nil, fmt.Errorf("mapper not implemented: %s", key)
+		return mapper.NewQdrantPineconeMapper(), nil
 
 	case "pinecone_to_weaviate":
 		// TODO: Implement PineconeToWeaviateMapper
 		return nil, fmt.Errorf("mapper not implemented: %s", key)
 
 	case "weaviate_to_pinecone":
-		// TODO: Implement WeaviateToPineconeMapper
-		return nil, fmt.Errorf("mapper not implemented: %s", key)
+		return mapper.NewWeaviatePineconeMapper(), nil
 
 	case "qdrant_to_weaviate":
 		// TODO: Implement QdrantToWeaviateMapper
 		return nil, fmt.Errorf("mapper not implemented: %s", key)
 
 	case "weaviate_to_qdrant":
-		// TODO: Implement WeaviateToQdrantMapper
-		return nil, fmt.Errorf("mapper not implemented: %s", key)
+		return mapper.NewWeaviateQdrantMapper(), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported migration path: %s → %s", sourceType, targetType)
