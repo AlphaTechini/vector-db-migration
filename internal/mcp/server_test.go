@@ -63,7 +63,8 @@ func TestServer_StartStop(t *testing.T) {
 			// Try a quick connection attempt.
 			url := "http://" + tempAddr
 
-			conn, err := http.Get(url)
+			client := &http.Client{Timeout: 100 * time.Millisecond}
+			conn, err := client.Get(url)
 			if err == nil {
 				conn.Body.Close()
 				success = true
@@ -155,6 +156,10 @@ func TestServer_HandleRequest_InvalidVersion(t *testing.T) {
 	req := httptest.NewRequest("POST", "/", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 	server.handleRequest(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for invalid version, got %d", rr.Code)
+	}
 
 	var errResp ErrorResponse
 	json.NewDecoder(rr.Body).Decode(&errResp)
