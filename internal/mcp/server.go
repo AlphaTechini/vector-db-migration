@@ -64,9 +64,9 @@ func NewServer(addr string, registry *ToolRegistry, opts ...ServerOption) *Serve
 // Start begins serving HTTP requests
 func (s *Server) Start(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.server != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("server already started")
 	}
 
@@ -116,6 +116,8 @@ func (s *Server) Start(ctx context.Context) error {
 		<-ctx.Done()
 		s.Stop()
 	}()
+
+	s.mu.Unlock()
 
 	if err := s.server.ListenAndServe(); err != http.ErrServerClosed {
 		return err

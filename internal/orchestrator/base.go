@@ -76,7 +76,9 @@ func (o *BaseOrchestrator) runMigration() {
 	defer func() {
 		o.mu.Lock()
 		o.isRunning = false
-		o.cancel()
+		if o.cancel != nil {
+			o.cancel()
+		}
 		o.mu.Unlock()
 	}()
 
@@ -123,6 +125,10 @@ func (o *BaseOrchestrator) runMigration() {
 		}
 
 		// Map records to target schema
+		if o.config.SchemaMapper == nil {
+			o.fail("schema mapper not configured")
+			return
+		}
 		mappedRecords, err := o.config.SchemaMapper.MapBatch(records, nil)
 		if err != nil {
 			o.fail(fmt.Sprintf("failed to map batch %d: %v", batchNum, err))
