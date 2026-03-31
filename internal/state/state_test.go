@@ -15,13 +15,13 @@ func TestSQLiteTracker_ListMigrations_FilteringAndSorting(t *testing.T) {
 	defer tracker.Close()
 
 	// Create test data
-	// migration-1: completed, 2020-01-01
-	// migration-2: in_progress, 2020-01-02
-	// migration-3: failed, 2020-01-03
+	// Setup migrations with unique, sequential timestamps to ensure deterministic sorting.
+	// We use an explicit base time to avoid reliance on real-time clock during rapid test execution.
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	setupMigration(t, tracker, "m1", StateCompleted)
-	setupMigration(t, tracker, "m2", StateInProgress)
-	setupMigration(t, tracker, "m3", StateFailed)
+	setupMigrationAt(t, tracker, "m1", StateCompleted, baseTime.Add(1*time.Hour))
+	setupMigrationAt(t, tracker, "m2", StateInProgress, baseTime.Add(2*time.Hour))
+	setupMigrationAt(t, tracker, "m3", StateFailed, baseTime.Add(3*time.Hour))
 
 	tests := []struct {
 		name         string
@@ -76,21 +76,16 @@ func TestSQLiteTracker_ListMigrations_FilteringAndSorting(t *testing.T) {
 	}
 }
 
-func setupMigration(t *testing.T, tracker *SQLiteTracker, id string, state MigrationState) {
-	// Use explicit INSERT to control created_at if necessary,
-	// but here we just want to ensure they are inserted in order.
+func setupMigrationAt(t *testing.T, tracker *SQLiteTracker, id string, state MigrationState, createdAt time.Time) {
 	query := `INSERT INTO migrations (migration_id, state, created_at) VALUES (?, ?, ?)`
-	// Use a deterministic offset based on the ID to ensure unique timestamps
-	// even if IDs have the same length.
-	offset := 0
-	if len(id) > 0 {
-		offset = int(id[len(id)-1])
-	}
-	createdAt := time.Now().Add(time.Duration(offset) * time.Second)
 	_, err := tracker.db.Exec(query, id, state, createdAt)
 	if err != nil {
 		t.Fatalf("Failed to setup migration %s: %v", id, err)
 	}
+}
+
+func setupMigration(t *testing.T, tracker *SQLiteTracker, id string, state MigrationState) {
+	setupMigrationAt(t, tracker, id, state, time.Now())
 }
 
 func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
@@ -128,12 +123,17 @@ func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
 		t.Fatalf("GetCheckpoint failed: %v", err)
 	}
 
-	fields, ok := retrieved.SchemaMapping["fields"].(map[string]interface{})
+	// Use checked type assertions for nested structure to avoid panics.
+	sm, ok := retrieved.SchemaMapping["fields"]
 	if !ok {
-		t.Fatal("SchemaMapping fields is not a map")
+		t.Fatal("SchemaMapping missing 'fields' key")
+	}
+	fields, ok := sm.(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected map[string]interface{} for 'fields', got %T", sm)
 	}
 	if fields["title"] != "description" {
-		t.Errorf("Expected title to be description, got %v", fields["title"])
+		t.Errorf("Expected title to be 'description', got %v", fields["title"])
 	}
 
 	if retrieved.ValidationStats.AvgCosineSimilarity != 0.9999 {
@@ -172,8 +172,11 @@ func TestSQLiteTracker_GetTotalMigrationsCount(t *testing.T) {
 }
 
 func TestNewSQLiteTracker_Error(t *testing.T) {
-	// Try to open a database in a non-existent directory
-	_, err := NewSQLiteTracker("/nonexistent/path/db.sqlite")
+	// Try to open a database in a non-existent directory.
+	// We use a path inside t.TempDir() but with an extra non-existent sub-directory
+	// to ensure deterministic failure across environments.
+	badPath := t.TempDir() + "/nonexistent-dir/db.sqlite"
+	_, err := NewSQLiteTracker(badPath)
 	if err == nil {
 		t.Error("Expected error when opening database in non-existent directory, got nil")
 	}

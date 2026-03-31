@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 )
@@ -103,13 +104,20 @@ func (s *Server) Start(ctx context.Context) error {
 
 	handler := s.GetHandler()
 
+	// Use net.Listen to get the actual address, especially important for :0
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+
 	srv := &http.Server{
-		Addr:    s.addr,
+		Addr:    ln.Addr().String(),
 		Handler: handler,
 	}
 	s.server = srv
 
-	log.Printf("🔌 MCP server listening on %s", s.addr)
+	log.Printf("🔌 MCP server listening on %s", srv.Addr)
 	if s.auth != nil {
 		log.Println("   🔒 Authentication enabled")
 	}
@@ -127,7 +135,13 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.mu.Unlock()
 
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+	err = srv.Serve(ln)
+
+	s.mu.Lock()
+	s.server = nil
+	s.mu.Unlock()
+
+	if err != http.ErrServerClosed {
 		return err
 	}
 

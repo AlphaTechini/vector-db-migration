@@ -56,7 +56,7 @@ func TestBaseMapper_TypeConversion(t *testing.T) {
 				Converter: func(v interface{}) (interface{}, error) {
 					s, ok := v.(string)
 					if !ok {
-						return nil, fmt.Errorf("not a string")
+						return nil, fmt.Errorf("value is not a string (got %T)", v)
 					}
 					return strconv.Atoi(s)
 				},
@@ -94,7 +94,7 @@ func TestBaseMapper_TypeConversionError(t *testing.T) {
 				Converter: func(v interface{}) (interface{}, error) {
 					s, ok := v.(string)
 					if !ok {
-						return nil, fmt.Errorf("value is not a string")
+						return nil, fmt.Errorf("value is not a string (got %T)", v)
 					}
 					return strconv.Atoi(s)
 				},

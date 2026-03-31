@@ -49,21 +49,38 @@ func TestServer_StartStop(t *testing.T) {
 		errChan <- server.Start(ctx)
 	}()
 
-	// Wait for server to be ready by checking the address
+	// Wait for server to be ready by attempting to connect
 	var addr string
-	for i := 0; i < 20; i++ {
+	success := false
+	for i := 0; i < 100; i++ {
 		server.mu.Lock()
 		if server.server != nil && server.server.Addr != "" {
 			addr = server.server.Addr
+			// Use local variable for address to avoid holding lock during HTTP request
+			tempAddr := addr
 			server.mu.Unlock()
-			break
+
+			// Try a quick connection attempt
+			// On some systems, :0 might resolve to something that needs prefixing
+			url := "http://" + tempAddr
+			if !strings.HasPrefix(tempAddr, "http") {
+				url = "http://" + tempAddr
+			}
+
+			conn, err := http.Get(url)
+			if err == nil {
+				conn.Body.Close()
+				success = true
+				break
+			}
+		} else {
+			server.mu.Unlock()
 		}
-		server.mu.Unlock()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 	}
 
-	if addr == "" {
-		t.Fatal("Server failed to start in time")
+	if !success {
+		t.Fatal("Server failed to start and become reachable in time")
 	}
 
 	// Try starting again (should fail)

@@ -27,6 +27,9 @@ func TestDecodeParams_Basic(t *testing.T) {
 		"score": 95.5,
 		"is_ok": true,
 		"tags":  []interface{}{"tag1", "tag2"},
+		"metadata": map[string]interface{}{
+			"key": "val",
+		},
 	}
 
 	var output TestStruct
@@ -47,7 +50,7 @@ func TestDecodeParams_Basic(t *testing.T) {
 	if !output.IsOk {
 		t.Error("Expected is_ok to be true")
 	}
-	if len(output.Tags) != 2 || output.Tags[0] != "tag1" {
+	if len(output.Tags) != 2 || output.Tags[0] != "tag1" || output.Tags[1] != "tag2" {
 		t.Errorf("Expected tags [tag1 tag2], got %v", output.Tags)
 	}
 }
@@ -73,8 +76,9 @@ func TestDecodeParams_Nested(t *testing.T) {
 	input := map[string]interface{}{
 		"id": "nest-1",
 		"data": map[string]interface{}{
-			"name": "nested",
-			"age":  float64(10),
+			"name":  "nested",
+			"age":   float64(10),
+			"score": float64(88.5),
 		},
 	}
 
@@ -92,6 +96,9 @@ func TestDecodeParams_Nested(t *testing.T) {
 	}
 	if output.Data.Age != 10 {
 		t.Errorf("Expected nested age 10, got %d", output.Data.Age)
+	}
+	if output.Data.Score != 88.5 {
+		t.Errorf("Expected nested score 88.5, got %f", output.Data.Score)
 	}
 }
 
