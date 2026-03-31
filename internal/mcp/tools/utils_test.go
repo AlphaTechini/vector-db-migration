@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -52,6 +53,10 @@ func TestDecodeParams_Basic(t *testing.T) {
 	}
 	if len(output.Tags) != 2 || output.Tags[0] != "tag1" || output.Tags[1] != "tag2" {
 		t.Errorf("Expected tags [tag1 tag2], got %v", output.Tags)
+	}
+
+	if val, ok := output.Metadata["key"]; !ok || val != "val" {
+		t.Errorf("Expected metadata 'key': 'val', got %v", output.Metadata)
 	}
 }
 
@@ -110,6 +115,10 @@ func TestDecodeParams_Error(t *testing.T) {
 	var output TestStruct
 	err := DecodeParams(input, &output)
 	if err == nil {
-		t.Error("Expected error for invalid type conversion, got nil")
+		t.Fatal("Expected error for invalid type conversion, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "age") {
+		t.Errorf("Expected error message to mention 'age', got: %v", err)
 	}
 }

@@ -77,6 +77,7 @@ func TestSQLiteTracker_ListMigrations_FilteringAndSorting(t *testing.T) {
 }
 
 func setupMigrationAt(t *testing.T, tracker *SQLiteTracker, id string, state MigrationState, createdAt time.Time) {
+	t.Helper()
 	query := `INSERT INTO migrations (migration_id, state, created_at) VALUES (?, ?, ?)`
 	_, err := tracker.db.Exec(query, id, state, createdAt)
 	if err != nil {
@@ -85,6 +86,7 @@ func setupMigrationAt(t *testing.T, tracker *SQLiteTracker, id string, state Mig
 }
 
 func setupMigration(t *testing.T, tracker *SQLiteTracker, id string, state MigrationState) {
+	t.Helper()
 	setupMigrationAt(t, tracker, id, state, time.Now())
 }
 
@@ -121,6 +123,9 @@ func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
 	retrieved, err := tracker.GetCheckpoint(id)
 	if err != nil {
 		t.Fatalf("GetCheckpoint failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("Expected checkpoint to be retrieved, got nil")
 	}
 
 	// Use checked type assertions for nested structure to avoid panics.

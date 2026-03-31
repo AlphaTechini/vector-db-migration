@@ -60,12 +60,8 @@ func TestServer_StartStop(t *testing.T) {
 			tempAddr := addr
 			server.mu.Unlock()
 
-			// Try a quick connection attempt
-			// On some systems, :0 might resolve to something that needs prefixing
+			// Try a quick connection attempt.
 			url := "http://" + tempAddr
-			if !strings.HasPrefix(tempAddr, "http") {
-				url = "http://" + tempAddr
-			}
 
 			conn, err := http.Get(url)
 			if err == nil {
