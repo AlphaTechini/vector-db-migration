@@ -50,14 +50,12 @@ func TestServer_StartStop(t *testing.T) {
 	}()
 
 	// Wait for server to be ready by attempting to connect
-	var addr string
 	success := false
 	for i := 0; i < 100; i++ {
 		server.mu.Lock()
 		if server.server != nil && server.server.Addr != "" {
-			addr = server.server.Addr
 			// Use local variable for address to avoid holding lock during HTTP request
-			tempAddr := addr
+			tempAddr := server.server.Addr
 			server.mu.Unlock()
 
 			// Try a quick connection attempt.
