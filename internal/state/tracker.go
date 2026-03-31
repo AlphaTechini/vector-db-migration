@@ -137,8 +137,8 @@ func (t *SQLiteTracker) GetState(migrationID string) (MigrationState, error) {
 // SetState updates the state of a migration
 func (t *SQLiteTracker) SetState(migrationID string, state MigrationState) error {
 	query := `
-	INSERT INTO migrations (migration_id, state, updated_at) 
-	VALUES (?, ?, CURRENT_TIMESTAMP)
+	INSERT INTO migrations (migration_id, state, created_at, updated_at)
+	VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 	ON CONFLICT(migration_id) DO UPDATE SET 
 		state = excluded.state,
 		updated_at = CURRENT_TIMESTAMP
