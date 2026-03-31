@@ -1,14 +1,12 @@
 package state
 
 import (
-	"os"
 	"testing"
 	"time"
 )
 
 func TestSQLiteTracker_ListMigrations_FilteringAndSorting(t *testing.T) {
-	tmpFile := "/tmp/test_list_" + time.Now().Format("20060102_150405") + ".db"
-	defer os.Remove(tmpFile)
+	tmpFile := t.TempDir() + "/test_list.db"
 
 	tracker, err := NewSQLiteTracker(tmpFile)
 	if err != nil {
@@ -82,7 +80,13 @@ func setupMigration(t *testing.T, tracker *SQLiteTracker, id string, state Migra
 	// Use explicit INSERT to control created_at if necessary,
 	// but here we just want to ensure they are inserted in order.
 	query := `INSERT INTO migrations (migration_id, state, created_at) VALUES (?, ?, ?)`
-	createdAt := time.Now().Add(time.Duration(len(id)) * time.Second) // Ensure different times
+	// Use a deterministic offset based on the ID to ensure unique timestamps
+	// even if IDs have the same length.
+	offset := 0
+	if len(id) > 0 {
+		offset = int(id[len(id)-1])
+	}
+	createdAt := time.Now().Add(time.Duration(offset) * time.Second)
 	_, err := tracker.db.Exec(query, id, state, createdAt)
 	if err != nil {
 		t.Fatalf("Failed to setup migration %s: %v", id, err)
@@ -90,8 +94,7 @@ func setupMigration(t *testing.T, tracker *SQLiteTracker, id string, state Migra
 }
 
 func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
-	tmpFile := "/tmp/test_complex_" + time.Now().Format("20060102_150405") + ".db"
-	defer os.Remove(tmpFile)
+	tmpFile := t.TempDir() + "/test_complex.db"
 
 	tracker, err := NewSQLiteTracker(tmpFile)
 	if err != nil {
@@ -125,8 +128,12 @@ func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
 		t.Fatalf("GetCheckpoint failed: %v", err)
 	}
 
-	if retrieved.SchemaMapping["fields"].(map[string]interface{})["title"] != "description" {
-		t.Error("Complex schema mapping not preserved correctly")
+	fields, ok := retrieved.SchemaMapping["fields"].(map[string]interface{})
+	if !ok {
+		t.Fatal("SchemaMapping fields is not a map")
+	}
+	if fields["title"] != "description" {
+		t.Errorf("Expected title to be description, got %v", fields["title"])
 	}
 
 	if retrieved.ValidationStats.AvgCosineSimilarity != 0.9999 {
@@ -135,8 +142,7 @@ func TestSQLiteTracker_ComplexCheckpoint(t *testing.T) {
 }
 
 func TestSQLiteTracker_GetTotalMigrationsCount(t *testing.T) {
-	tmpFile := "/tmp/test_count_" + time.Now().Format("20060102_150405") + ".db"
-	defer os.Remove(tmpFile)
+	tmpFile := t.TempDir() + "/test_count.db"
 
 	tracker, err := NewSQLiteTracker(tmpFile)
 	if err != nil {
@@ -148,12 +154,18 @@ func TestSQLiteTracker_GetTotalMigrationsCount(t *testing.T) {
 	setupMigration(t, tracker, "m2", StateInProgress)
 	setupMigration(t, tracker, "m3", StateInProgress)
 
-	count, _ := tracker.GetTotalMigrationsCount("")
+	count, err := tracker.GetTotalMigrationsCount("")
+	if err != nil {
+		t.Fatalf("GetTotalMigrationsCount failed: %v", err)
+	}
 	if count != 3 {
 		t.Errorf("Expected total count 3, got %d", count)
 	}
 
-	count, _ = tracker.GetTotalMigrationsCount(string(StateInProgress))
+	count, err = tracker.GetTotalMigrationsCount(string(StateInProgress))
+	if err != nil {
+		t.Fatalf("GetTotalMigrationsCount failed: %v", err)
+	}
 	if count != 2 {
 		t.Errorf("Expected InProgress count 2, got %d", count)
 	}

@@ -92,7 +92,11 @@ func TestBaseMapper_TypeConversionError(t *testing.T) {
 		TypeConversions: map[string]TypeConversion{
 			"age": {
 				Converter: func(v interface{}) (interface{}, error) {
-					return strconv.Atoi(v.(string))
+					s, ok := v.(string)
+					if !ok {
+						return nil, fmt.Errorf("value is not a string")
+					}
+					return strconv.Atoi(s)
 				},
 			},
 		},

@@ -19,12 +19,14 @@ type NestedStruct struct {
 }
 
 func TestDecodeParams_Basic(t *testing.T) {
+	// Payloads coming from JSON-RPC are typically float64 for all numbers
+	// and []interface{} for all arrays.
 	input := map[string]interface{}{
 		"name":  "jules",
-		"age":   30,
+		"age":   float64(30),
 		"score": 95.5,
 		"is_ok": true,
-		"tags":  []string{"tag1", "tag2"},
+		"tags":  []interface{}{"tag1", "tag2"},
 	}
 
 	var output TestStruct
@@ -72,7 +74,7 @@ func TestDecodeParams_Nested(t *testing.T) {
 		"id": "nest-1",
 		"data": map[string]interface{}{
 			"name": "nested",
-			"age":  10,
+			"age":  float64(10),
 		},
 	}
 
@@ -87,6 +89,9 @@ func TestDecodeParams_Nested(t *testing.T) {
 	}
 	if output.Data.Name != "nested" {
 		t.Errorf("Expected nested name, got %s", output.Data.Name)
+	}
+	if output.Data.Age != 10 {
+		t.Errorf("Expected nested age 10, got %d", output.Data.Age)
 	}
 }
 

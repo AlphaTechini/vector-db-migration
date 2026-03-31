@@ -86,6 +86,14 @@ func (m *BaseMapper) MapRecord(record adapters.Record, mapping *SchemaMapping) (
 		Vector:   record.Vector,
 		Metadata: make(map[string]interface{}),
 	}
+
+	// Handle nil mapping (1:1 passthrough)
+	if mapping == nil {
+		for k, v := range record.Metadata {
+			result.Metadata[k] = v
+		}
+		return result, nil
+	}
 	
 	// Apply field mappings
 	for sourceField, targetField := range mapping.FieldMappings {

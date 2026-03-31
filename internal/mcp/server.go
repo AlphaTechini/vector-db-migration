@@ -61,15 +61,8 @@ func NewServer(addr string, registry *ToolRegistry, opts ...ServerOption) *Serve
 	return s
 }
 
-// Start begins serving HTTP requests
-func (s *Server) Start(ctx context.Context) error {
-	s.mu.Lock()
-
-	if s.server != nil {
-		s.mu.Unlock()
-		return fmt.Errorf("server already started")
-	}
-
+// GetHandler returns the HTTP handler with all middleware applied
+func (s *Server) GetHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRequest)
 
@@ -96,10 +89,25 @@ func (s *Server) Start(ctx context.Context) error {
 		handler = s.audit.Middleware(handler)
 	}
 
-	s.server = &http.Server{
+	return handler
+}
+
+// Start begins serving HTTP requests
+func (s *Server) Start(ctx context.Context) error {
+	s.mu.Lock()
+
+	if s.server != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("server already started")
+	}
+
+	handler := s.GetHandler()
+
+	srv := &http.Server{
 		Addr:    s.addr,
 		Handler: handler,
 	}
+	s.server = srv
 
 	log.Printf("🔌 MCP server listening on %s", s.addr)
 	if s.auth != nil {
@@ -119,7 +127,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	s.mu.Unlock()
 
-	if err := s.server.ListenAndServe(); err != http.ErrServerClosed {
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		return err
 	}
 

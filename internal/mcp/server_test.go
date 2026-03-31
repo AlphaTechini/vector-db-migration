@@ -49,8 +49,22 @@ func TestServer_StartStop(t *testing.T) {
 		errChan <- server.Start(ctx)
 	}()
 
-	// Give it a moment to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for server to be ready by checking the address
+	var addr string
+	for i := 0; i < 20; i++ {
+		server.mu.Lock()
+		if server.server != nil && server.server.Addr != "" {
+			addr = server.server.Addr
+			server.mu.Unlock()
+			break
+		}
+		server.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if addr == "" {
+		t.Fatal("Server failed to start in time")
+	}
 
 	// Try starting again (should fail)
 	err := server.Start(ctx)
@@ -229,20 +243,8 @@ func TestServer_MiddlewareChain(t *testing.T) {
 		WithAuditLog(logger),
 	)
 
-	// Create a test server with the middleware chain
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", server.handleRequest)
-
-	var handler http.Handler = mux
-	if server.rateLimiter != nil {
-		handler = server.rateLimiter.Middleware(handler)
-	}
-	if server.auth != nil {
-		handler = server.auth.Middleware(handler)
-	}
-	if server.audit != nil {
-		handler = server.audit.Middleware(handler)
-	}
+	// Use the official handler with production wiring
+	handler := server.GetHandler()
 
 	// 1. Unauthenticated request
 	req := httptest.NewRequest("POST", "/", bytes.NewReader([]byte(`{"jsonrpc":"2.0","id":1,"method":"test"}`)))
