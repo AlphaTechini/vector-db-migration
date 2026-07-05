@@ -1,6 +1,5 @@
 # VectorMigrate - Zero-Downtime Vector Database Migration
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
 [![Status](https://img.shields.io/badge/status-active--development-green)]()
 [![MCP Protocol](https://img.shields.io/badge/MCP-1.0-blue)]()
@@ -551,17 +550,11 @@ Built with inspiration from:
 - [Weaviate](https://weaviate.io) - GraphQL-native vector DB
 - [Milvus](https://milvus.io) - Scalable vector database
 
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 <div align="center">
 
-**Built with ❤️ by AlphaTechini**
 
 [Report Bug](https://github.com/AlphaTechini/vector-db-migration/issues) · 
 [Request Feature](https://github.com/AlphaTechini/vector-db-migration/issues) · 
