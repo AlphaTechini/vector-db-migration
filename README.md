@@ -534,6 +534,7 @@ go build -o vectormigrate ./cmd/vectormigrate
 
 ## 📚 Documentation
 
+- **[Project Structure](structure.md)** - Folder structure + recommended reading order
 - **[First Principles Design](docs/FIRST-PRINCIPLES.md)** - Architecture decisions
 - **[MCP First Principles](docs/MCP-FIRST-PRINCIPLES.md)** - MCP integration plan
 - **[Market Analysis](docs/MARKET-ANALYSIS-2026.md)** - Why this tool exists
